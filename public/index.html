@@ -107,7 +107,10 @@
         }
         window.location.href = '/app.html';
       } catch (err) {
-        setStatus('// ' + (err.message || 'something went wrong'), 'error');
+        const msg = err.message?.toLowerCase().includes('invalid')
+          ? '// email not confirmed or wrong password'
+          : '// ' + (err.message || 'something went wrong');
+        setStatus(msg, 'error');
         btn.disabled = false;
       }
     }
