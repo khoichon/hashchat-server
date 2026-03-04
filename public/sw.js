@@ -1,117 +1,60 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>chat // login</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #05080f; --glass: rgba(255,255,255,0.03); --glass-hover: rgba(255,255,255,0.055);
-      --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.13);
-      --text: rgba(255,255,255,0.88); --text-dim: rgba(255,255,255,0.35); --text-muted: rgba(255,255,255,0.12);
-      --accent: #ffffff; --error: #ff5555; --success: #55ffaa;
-    }
-    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Geist', sans-serif; font-weight: 300; }
-    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(80,100,200,0.07) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(60,80,180,0.05) 0%, transparent 60%); pointer-events: none; z-index: 0; }
-    body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
-    .page { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
-    .logo { font-family: 'Geist Mono', monospace; font-size: 0.75rem; letter-spacing: 0.2em; color: var(--accent); display: flex; align-items: center; gap: 0.55rem; text-transform: uppercase; margin-bottom: 2.5rem; }
-    .logo-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px rgba(255,255,255,0.7); animation: pulse 2.5s ease infinite; }
-    @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 8px rgba(255,255,255,0.7); } 50% { opacity: 0.25; box-shadow: none; } }
-    .card { width: 100%; max-width: 320px; background: var(--glass); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 24px 64px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.02); animation: fadeUp 0.35s ease both; }
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.4rem; }
-    .tab { flex: 1; background: none; border: none; font-family: 'Geist Mono', monospace; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); cursor: pointer; padding: 0 0 0.65rem; transition: color 0.15s; border-bottom: 1px solid transparent; margin-bottom: -1px; }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .fields { display: none; flex-direction: column; gap: 0.85rem; }
-    .fields.active { display: flex; }
-    .field { display: flex; flex-direction: column; gap: 0.35rem; }
-    .field-label { font-family: 'Geist Mono', monospace; font-size: 0.57rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); }
-    .field-input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: 'Geist', sans-serif; font-size: 0.8rem; font-weight: 300; padding: 0.6rem 0.85rem; outline: none; transition: border-color 0.15s, background 0.15s; width: 100%; }
-    .field-input:focus { border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
-    .field-input::placeholder { color: var(--text-muted); }
-    .status { font-family: 'Geist Mono', monospace; font-size: 0.6rem; min-height: 1rem; margin-top: 0.4rem; }
-    .status.error { color: var(--error); } .status.success { color: var(--success); }
-    .submit-btn { width: 100%; margin-top: 0.65rem; padding: 0.65rem; background: rgba(255,255,255,0.92); color: var(--bg); border: none; border-radius: 7px; font-family: 'Geist Mono', monospace; font-size: 0.63rem; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; transition: background 0.15s; }
-    .submit-btn:hover { background: #fff; }
-    .submit-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-    .hint { margin-top: 1.5rem; font-family: 'Geist Mono', monospace; font-size: 0.55rem; letter-spacing: 0.1em; color: var(--text-muted); text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="logo"><div class="logo-dot"></div>chat</div>
-    <div class="card">
-      <div class="tabs">
-        <button class="tab active" id="tab-login" onclick="switchTab('login')">// sign in</button>
-        <button class="tab" id="tab-signup" onclick="switchTab('signup')">// sign up</button>
-      </div>
-      <div class="fields active" id="fields-login">
-        <div class="field">
-          <label class="field-label">email</label>
-          <input class="field-input" id="login-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        <div class="field">
-          <label class="field-label">password</label>
-          <input class="field-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
-        </div>
-      </div>
-      <div class="fields" id="fields-signup">
-        <div class="field">
-          <label class="field-label">email</label>
-          <input class="field-input" id="signup-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        <div class="field">
-          <label class="field-label">password</label>
-          <input class="field-input" id="signup-password" type="password" placeholder="min. 8 characters" autocomplete="new-password" />
-        </div>
-      </div>
-      <div class="status" id="status"></div>
-      <button class="submit-btn" id="submit-btn" onclick="handleSubmit()">sign in</button>
-    </div>
-    <div class="hint">// realtime · end-to-end · no logs</div>
-  </div>
-  <script src="/config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="/js/auth.js"></script>
-  <script>
-    let currentTab = 'login';
-    function switchTab(tab) {
-      currentTab = tab;
-      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
-      document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
-      document.getElementById('fields-login').classList.toggle('active', tab === 'login');
-      document.getElementById('fields-signup').classList.toggle('active', tab === 'signup');
-      document.getElementById('submit-btn').textContent = tab === 'login' ? 'sign in' : 'create account';
-      setStatus('', '');
-    }
-    function setStatus(msg, type) {
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = 'status' + (type ? ' ' + type : '');
-    }
-    async function handleSubmit() {
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      setStatus('', '');
-      try {
-        if (currentTab === 'login') {
-          await Auth.login(document.getElementById('login-email').value.trim(), document.getElementById('login-password').value);
-        } else {
-          await Auth.signup(document.getElementById('signup-email').value.trim(), document.getElementById('signup-password').value);
-          setStatus('// account created, signing in…', 'success');
+// HashChat Service Worker — handles web push notifications
+
+self.addEventListener("install", e => {
+  self.skipWaiting(); // activate immediately
+});
+
+self.addEventListener("activate", e => {
+  e.waitUntil(clients.claim()); // take control of all tabs
+});
+
+self.addEventListener("push", e => {
+  if (!e.data) return;
+
+  let data;
+  try { data = e.data.json(); }
+  catch { data = { senderName: "someone", content: e.data.text(), roomName: "chat" }; }
+
+  const { senderName, senderHash, content, roomName, isDM } = data;
+
+  const title = isDM
+    ? senderName + " " + senderHash
+    : "#" + roomName;
+
+  const body = isDM
+    ? content
+    : senderName + ": " + content;
+
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icon.png",
+      badge: "/badge.png",
+      tag: data.roomId,           // group notifications by room
+      renotify: true,             // vibrate even if same tag
+      data: { roomId: data.roomId },
+    })
+  );
+});
+
+// Clicking a notification opens/focuses the app
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const roomId = e.notification.data?.roomId;
+
+  e.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+      // If app is already open, focus it
+      for (const client of list) {
+        if (client.url.includes("/app.html") && "focus" in client) {
+          client.focus();
+          if (roomId) client.postMessage({ type: "FOCUS_ROOM", roomId });
+          return;
         }
-        window.location.href = '/app.html';
-      } catch (err) {
-        setStatus('// ' + (err.message || 'something went wrong'), 'error');
-        btn.disabled = false;
       }
-    }
-    document.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
-  </script>
-</body>
-</html>
+      // Otherwise open a new tab
+      const url = "/app.html" + (roomId ? "?room=" + roomId : "");
+      clients.openWindow(url);
+    })
+  );
+});

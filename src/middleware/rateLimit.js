@@ -1,19 +1,20 @@
-const rateLimit = require('express-rate-limit');
+const rateLimit = require("express-rate-limit");
 
-// Blanket limiter — every endpoint
 const globalLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 60,                  // 60 req/min per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests, slow down 💀' },
+  windowMs: 1 * 60 * 1000, max: 60,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: "too many requests, slow down" },
 });
 
-// Stricter limiter for uploads specifically
 const uploadLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 20,                  // 20 uploads per 5 min
-  message: { error: 'Upload limit reached, take a breath' },
+  windowMs: 5 * 60 * 1000, max: 20,
+  message: { error: "upload limit reached" },
 });
 
-module.exports = { globalLimiter, uploadLimiter };
+// Message sends — generous but prevents spam
+const messageLimiter = rateLimit({
+  windowMs: 10 * 1000, max: 20, // 20 messages per 10s
+  message: { error: "slow down there" },
+});
+
+module.exports = { globalLimiter, uploadLimiter, messageLimiter };

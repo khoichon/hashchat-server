@@ -1,148 +1,517 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>chat // settings</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #05080f; --glass: rgba(255,255,255,0.03); --glass-hover: rgba(255,255,255,0.055);
-      --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.13);
-      --text: rgba(255,255,255,0.88); --text-dim: rgba(255,255,255,0.35); --text-muted: rgba(255,255,255,0.12);
-      --accent: #ffffff; --error: #ff5555; --success: #55ffaa;
+// HashChat — main app logic
+// Handles: rooms, DMs, messages, realtime, file uploads, reply, modals
+
+(async () => {
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  const session = await Auth.requireAuth();
+  if (!session) return;
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let currentRoomId   = null;
+  let currentRoomName = '';
+  let currentRoomIsDM = false;
+  let replyToMsg      = null;
+  let myProfile       = null;
+  let realtimeSub     = null;
+
+  const GENERAL_ID = '00000000-0000-0000-0000-000000000001';
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  await Notifications.init();
+  await loadProfile();
+  await ensureGeneralMembership();
+  await loadSidebar();
+  hideLoading();
+
+  // Check for ?room= query param (from push notification click)
+  const params = new URLSearchParams(location.search);
+  const targetRoom = params.get('room');
+  if (targetRoom) selectRoom(targetRoom);
+  else selectRoom(GENERAL_ID);
+
+  // Listen for service worker FOCUS_ROOM messages
+  navigator.serviceWorker?.addEventListener('message', e => {
+    if (e.data?.type === 'FOCUS_ROOM') selectRoom(e.data.roomId);
+  });
+
+  window.addEventListener('focus', () => Notifications.clearBadge());
+
+  // ── Profile ───────────────────────────────────────────────────────────────
+  async function loadProfile(retries = 5) {
+    for (let i = 0; i < retries; i++) {
+      const { data } = await db.from('users').select('*').eq('id', session.user.id).maybeSingle();
+      if (data) { myProfile = data; break; }
+      await new Promise(r => setTimeout(r, 600));
     }
-    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Geist', sans-serif; font-weight: 300; }
-    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(80,100,200,0.07) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(60,80,180,0.05) 0%, transparent 60%); pointer-events: none; z-index: 0; }
-    body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
-    .page { position: relative; z-index: 1; max-width: 520px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
-    .page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2.5rem; }
-    .back-link { font-family: 'Geist Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
-    .back-link:hover { color: var(--accent); }
-    .page-title { font-family: 'Geist Mono', monospace; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
-    .user-preview { display: flex; align-items: center; gap: 1rem; padding: 1.1rem; background: var(--glass); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 1rem; }
-    .preview-avatar { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 0.7rem; font-weight: 500; color: #050810; box-shadow: 0 2px 10px rgba(0,0,0,0.4); flex-shrink: 0; }
-    .preview-name { font-size: 0.88rem; font-weight: 400; margin-bottom: 2px; }
-    .preview-hash { font-family: 'Geist Mono', monospace; font-size: 0.6rem; color: var(--text-muted); }
-    .section { background: var(--glass); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem; overflow: hidden; }
-    .section-title { font-family: 'Geist Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); padding: 0.9rem 1.1rem 0.55rem; }
-    .setting-row { padding: 0.75rem 1.1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--border); }
-    .setting-label { font-size: 0.8rem; font-weight: 400; }
-    .setting-desc { font-family: 'Geist Mono', monospace; font-size: 0.58rem; color: var(--text-muted); margin-top: 2px; }
-    .setting-body { padding: 0.75rem 1.1rem 1.1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.65rem; }
-    .s-input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: 'Geist', sans-serif; font-size: 0.8rem; font-weight: 300; padding: 0.6rem 0.85rem; outline: none; transition: border-color 0.15s, background 0.15s; width: 100%; }
-    .s-input:focus { border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
-    .s-input::placeholder { color: var(--text-muted); }
-    .input-row { display: flex; gap: 0.5rem; }
-    .input-row .s-input { flex: 1; }
-    .s-btn { padding: 0.55rem 1rem; border-radius: 7px; border: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
-    .s-btn.primary { background: rgba(255,255,255,0.92); color: var(--bg); border-color: transparent; }
-    .s-btn.primary:hover { background: #fff; }
-    .s-btn.primary:disabled { opacity: 0.3; cursor: not-allowed; }
-    .s-btn.ghost { background: none; color: var(--text-dim); }
-    .s-btn.ghost:hover { background: var(--glass-hover); color: var(--text); border-color: var(--border-hover); }
-    .s-btn.danger { background: rgba(255,85,85,0.08); color: var(--error); border-color: rgba(255,85,85,0.15); }
-    .s-btn.danger:hover { background: rgba(255,85,85,0.15); }
-    .color-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; }
-    .swatch { aspect-ratio: 1; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
-    .swatch:hover { transform: scale(1.1); }
-    .swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255,255,255,0.2); transform: scale(1.08); }
-    .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .toggle-track { position: absolute; inset: 0; background: rgba(255,255,255,0.08); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background 0.2s; }
-    .toggle input:checked + .toggle-track { background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.2); }
-    .toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: var(--text-dim); border-radius: 50%; transition: transform 0.2s, background 0.2s; }
-    .toggle input:checked + .toggle-track::after { transform: translateX(16px); background: var(--accent); }
-    .s-status { font-family: 'Geist Mono', monospace; font-size: 0.6rem; min-height: 1rem; }
-    .s-status.error { color: var(--error); } .s-status.success { color: var(--success); }
-    .badge { font-family: 'Geist Mono', monospace; font-size: 0.55rem; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px; }
-    .badge.on { background: rgba(85,255,170,0.12); color: var(--success); }
-    .badge.off { background: rgba(255,255,255,0.06); color: var(--text-muted); }
-    .danger-zone { border-color: rgba(255,85,85,0.15); }
-    .danger-zone .section-title { color: rgba(255,85,85,0.5); }
-    @media (max-width: 600px) { .page { padding: 2rem 1rem 4rem; } }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="page-header">
-      <a class="back-link" href="/app.html">← back</a>
-      <span class="page-title">// settings</span>
-    </div>
-    <div class="user-preview">
-      <div class="preview-avatar" id="preview-avatar"></div>
-      <div>
-        <div class="preview-name" id="preview-name">loading…</div>
-        <div class="preview-hash" id="preview-hash">#—</div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">// profile</div>
-      <div class="setting-body">
-        <div class="input-row">
-          <input class="s-input" id="name-input" type="text" placeholder="display name" maxlength="32" />
-          <button class="s-btn primary" onclick="saveName()">save</button>
-        </div>
-        <div class="s-status" id="name-status"></div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">// color</div>
-      <div class="setting-body">
-        <div class="color-grid" id="color-grid"></div>
-        <div class="s-status" id="color-status"></div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">// notifications</div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">os notifications</div>
-          <div class="setting-desc" id="notif-desc">enable push when tab is backgrounded</div>
-        </div>
-        <label class="toggle">
-          <input type="checkbox" id="notif-toggle" onchange="toggleNotifications(this)" />
-          <div class="toggle-track"></div>
-        </label>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">// security</div>
-      <div class="setting-body">
-        <input class="s-input" id="new-password" type="password" placeholder="new password" autocomplete="new-password" />
-        <div class="input-row">
-          <input class="s-input" id="confirm-password" type="password" placeholder="confirm password" />
-          <button class="s-btn primary" onclick="changePassword()">update</button>
-        </div>
-        <div class="s-status" id="password-status"></div>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">two-factor auth</div>
-          <div class="setting-desc">totp via authenticator app</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.65rem">
-          <span class="badge off" id="twofa-badge">off</span>
-          <button class="s-btn ghost" id="twofa-btn" onclick="toggle2FA()">enable</button>
-        </div>
-      </div>
-    </div>
-    <div class="section danger-zone">
-      <div class="section-title">// danger zone</div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">delete account</div>
-          <div class="setting-desc">permanently wipes all data. cannot be undone.</div>
-        </div>
-        <button class="s-btn danger" onclick="deleteAccount()">delete</button>
-      </div>
-    </div>
-  </div>
-  <script src="/config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="/js/settings.js"></script>
-</body>
-</html>
+    if (!myProfile) return;
+    const initials = (myProfile.name || '?').slice(0, 2).toUpperCase();
+    const av = document.getElementById('user-avatar');
+    av.textContent    = initials;
+    av.style.background = myProfile.color || '#4D96FF';
+    document.getElementById('user-name').textContent = myProfile.name || 'anon';
+    document.getElementById('user-hash').textContent = '#' + myProfile.hash;
+    document.getElementById('user-hash').onclick = () => {
+      navigator.clipboard.writeText('#' + myProfile.hash);
+    };
+  }
+
+  async function ensureGeneralMembership() {
+    const { data } = await db.from('room_members').select('room_id')
+      .eq('room_id', GENERAL_ID).eq('user_id', session.user.id).is('left_at', null).maybeSingle();
+    if (!data) {
+      await db.from('room_members').upsert({ room_id: GENERAL_ID, user_id: session.user.id });
+    }
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  async function loadSidebar() {
+    const { data: memberships } = await db.from('room_members')
+      .select('room_id, rooms(id, name, description, is_dm)')
+      .eq('user_id', session.user.id).is('left_at', null);
+
+    if (!memberships) return;
+
+    const rooms = [], dms = [];
+    for (const m of memberships) {
+      if (!m.rooms) continue;
+      m.rooms.is_dm ? dms.push(m.rooms) : rooms.push(m.rooms);
+    }
+
+    renderRoomList('room-list', rooms, false);
+    renderDMList('dm-list', dms);
+  }
+
+  function renderRoomList(elId, rooms, isDM) {
+    const el = document.getElementById(elId);
+    el.innerHTML = '';
+    for (const room of rooms) {
+      const item = document.createElement('div');
+      item.className = 'room-item';
+      item.dataset.id = room.id;
+      item.innerHTML =
+        '<span class="room-prefix">#</span>' +
+        '<span>' + esc(room.name) + '</span>';
+      item.onclick = () => selectRoom(room.id);
+      el.appendChild(item);
+    }
+  }
+
+  async function renderDMList(elId, dms) {
+    const el = document.getElementById(elId);
+    el.innerHTML = '';
+    for (const room of dms) {
+      // Resolve the other person's name from the dm:hash1:hash2 format
+      const parts = room.name.split(':'); // ['dm','hash1','hash2']
+      const otherHash = parts[1] === myProfile.hash ? parts[2] : parts[1];
+      const { data: other } = await db.from('users').select('name,color').eq('hash', otherHash).maybeSingle();
+      const item = document.createElement('div');
+      item.className = 'room-item';
+      item.dataset.id = room.id;
+      item.innerHTML =
+        '<span class="room-prefix" style="color:' + (other?.color || '#fff') + ';opacity:1">·</span>' +
+        '<span>' + esc(other?.name || otherHash) + '</span>';
+      item.onclick = () => selectRoom(room.id);
+      el.appendChild(item);
+    }
+  }
+
+  function setActiveRoom(roomId) {
+    document.querySelectorAll('.room-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === roomId);
+    });
+  }
+
+  // ── Room selection ────────────────────────────────────────────────────────
+  async function selectRoom(roomId) {
+    currentRoomId = roomId;
+    clearReply();
+
+    // Show chat view
+    document.getElementById('no-room').style.display  = 'none';
+    const cv = document.getElementById('chat-view');
+    cv.style.display = 'flex';
+
+    setActiveRoom(roomId);
+    showMain(); // mobile
+
+    // Fetch room info
+    const { data: room } = await db.from('rooms').select('*').eq('id', roomId).maybeSingle();
+    if (!room) return;
+
+    currentRoomName = room.name;
+    currentRoomIsDM = room.is_dm;
+
+    document.getElementById('chat-header-name').textContent = room.is_dm
+      ? dmDisplayName(room.name) : room.name;
+    document.getElementById('chat-header-desc').textContent = room.description || '';
+    document.getElementById('invite-btn').style.display = room.is_dm ? 'none' : '';
+
+    await loadMessages(roomId);
+    subscribeRealtime(roomId);
+  }
+
+  function dmDisplayName(name) {
+    const parts = name.split(':');
+    return parts[1] === myProfile?.hash ? parts[2] : parts[1];
+  }
+
+  // ── Messages ──────────────────────────────────────────────────────────────
+  async function loadMessages(roomId) {
+    const wrap = document.getElementById('messages');
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-state-big">#</div><div>// no messages yet</div></div>';
+
+    const { data: msgs } = await db.from('messages')
+      .select('*, users(name, hash, color)')
+      .eq('room_id', roomId)
+      .order('timestamp', { ascending: true })
+      .limit(100);
+
+    if (!msgs?.length) return;
+    wrap.innerHTML = '';
+    let lastUserId = null, lastDate = null;
+
+    for (const msg of msgs) {
+      const date = new Date(msg.timestamp).toDateString();
+      if (date !== lastDate) {
+        appendDateDivider(wrap, msg.timestamp);
+        lastDate = date;
+        lastUserId = null;
+      }
+      const collapsed = msg.user_id === lastUserId;
+      appendMessage(wrap, msg, collapsed);
+      lastUserId = msg.user_id;
+    }
+    scrollToBottom();
+  }
+
+  function appendMessage(wrap, msg, collapsed = false) {
+    // Resolve reply
+    let replyHTML = '';
+    if (msg.reply_id) {
+      replyHTML = '<div class="msg-reply" data-reply-id="' + msg.reply_id + '">↩ reply</div>';
+    }
+
+    const user     = msg.users || {};
+    const initials = (user.name || '?').slice(0, 2).toUpperCase();
+    const color    = user.color || '#4D96FF';
+    const time     = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const el = document.createElement('div');
+    el.className = 'msg' + (collapsed ? ' collapsed' : '');
+    el.dataset.id = msg.id;
+    el.innerHTML =
+      '<div class="msg-avatar" style="background:' + color + '">' + esc(initials) + '</div>' +
+      '<div class="msg-body">' +
+        '<div class="msg-meta">' +
+          '<span class="msg-name" style="color:' + color + '">' + esc(user.name || 'anon') + '</span>' +
+          '<span class="msg-hash-tag">#' + esc(user.hash || '?') + '</span>' +
+          '<span class="msg-time">' + time + '</span>' +
+        '</div>' +
+        replyHTML +
+        renderContent(msg) +
+        '<div class="msg-actions">' +
+          '<button class="msg-action" onclick="window.replyTo('' + msg.id + '','' + esc(user.name) + '')">reply</button>' +
+        '</div>' +
+      '</div>';
+
+    wrap.appendChild(el);
+  }
+
+  function renderContent(msg) {
+    // Detect if content is a file URL from our server
+    try {
+      const url = new URL(msg.content);
+      const ext = url.pathname.split('.').pop().toLowerCase();
+      const imageExts = ['jpg','jpeg','png','gif','webp','svg'];
+      if (imageExts.includes(ext)) {
+        return '<img class="msg-image" src="' + esc(msg.content) + '" alt="image" onclick="window.open(this.src)" />';
+      }
+      const filename = decodeURIComponent(url.pathname.split('/').pop());
+      return '<a class="msg-file" href="' + esc(msg.content) + '" target="_blank" rel="noopener">' +
+        '<span class="msg-file-icon">📎</span>' +
+        '<span class="msg-file-name">' + esc(filename) + '</span>' +
+      '</a>';
+    } catch {}
+    return '<div class="msg-text">' + esc(msg.content) + '</div>';
+  }
+
+  function appendDateDivider(wrap, timestamp) {
+    const d = document.createElement('div');
+    d.className = 'date-divider';
+    d.textContent = new Date(timestamp).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    wrap.appendChild(d);
+  }
+
+  function scrollToBottom() {
+    const wrap = document.getElementById('messages');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+
+  // ── Realtime ──────────────────────────────────────────────────────────────
+  function subscribeRealtime(roomId) {
+    if (realtimeSub) db.removeChannel(realtimeSub);
+    realtimeSub = db.channel('room:' + roomId)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'messages',
+        filter: 'room_id=eq.' + roomId,
+      }, async payload => {
+        const msg = payload.new;
+        // Fetch user profile for the new message
+        const { data: user } = await db.from('users').select('name,hash,color').eq('id', msg.user_id).maybeSingle();
+        msg.users = user;
+
+        const wrap = document.getElementById('messages');
+        const lastMsg = wrap.querySelector('.msg:last-child');
+        const lastUserId = lastMsg?.dataset?.userId;
+        appendMessage(wrap, msg, msg.user_id === lastUserId);
+        scrollToBottom();
+
+        // Notify if not sent by us
+        if (msg.user_id !== session.user.id) {
+          Notifications.notify({
+            senderName:  user?.name || 'someone',
+            senderHash:  '#' + (user?.hash || '?'),
+            senderColor: user?.color || '#fff',
+            content:     msg.content,
+            roomName:    currentRoomName,
+            isDM:        currentRoomIsDM,
+          });
+        }
+      })
+      .subscribe();
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  window.sendMessage = async function() {
+    const input = document.getElementById('msg-input');
+    const content = input.value.trim();
+    if (!content || !currentRoomId) return;
+
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
+    input.value = '';
+    autoResize(input);
+
+    try {
+      const { data: { session: s } } = await db.auth.getSession();
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + s.access_token,
+        },
+        body: JSON.stringify({
+          roomId: currentRoomId,
+          content,
+          replyId: replyToMsg?.id || null,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      clearReply();
+    } catch (err) {
+      console.error('Send failed:', err);
+    } finally {
+      btn.disabled = false;
+      input.focus();
+    }
+  };
+
+  // ── Reply ─────────────────────────────────────────────────────────────────
+  window.replyTo = function(msgId, name) {
+    replyToMsg = { id: msgId, name };
+    const bar = document.getElementById('reply-preview');
+    bar.classList.add('visible');
+    document.getElementById('reply-text').textContent = '↩ replying to ' + name;
+    document.getElementById('msg-input').focus();
+  };
+
+  window.clearReply = function() {
+    replyToMsg = null;
+    document.getElementById('reply-preview')?.classList.remove('visible');
+  };
+
+  document.getElementById('reply-cancel').onclick = clearReply;
+
+  // ── File upload ───────────────────────────────────────────────────────────
+  document.getElementById('attach-btn').onclick = () =>
+    document.getElementById('file-input').click();
+
+  document.getElementById('file-input').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentRoomId) return;
+    e.target.value = '';
+
+    const bar   = document.getElementById('upload-bar');
+    const fill  = document.getElementById('upload-fill');
+    const label = document.getElementById('upload-label');
+    bar.classList.add('visible');
+    label.textContent = 'uploading ' + file.name + '…';
+    fill.style.width = '0%';
+
+    // Fake progress — XHR would give real progress but fetch is simpler
+    let prog = 0;
+    const tick = setInterval(() => {
+      prog = Math.min(prog + 10, 85);
+      fill.style.width = prog + '%';
+    }, 200);
+
+    try {
+      const { data: { session: s } } = await db.auth.getSession();
+      const form = new FormData();
+      form.append('file', file);
+      form.append('roomId', currentRoomId);
+
+      const res = await fetch('/upload/file', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + s.access_token },
+        body: form,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const { url } = await res.json();
+
+      fill.style.width = '100%';
+      clearInterval(tick);
+
+      // Send the URL as a message — renderContent detects it as file/image
+      await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + s.access_token,
+        },
+        body: JSON.stringify({ roomId: currentRoomId, content: url }),
+      });
+    } catch (err) {
+      console.error('Upload error:', err);
+      label.textContent = '// upload failed';
+    } finally {
+      clearInterval(tick);
+      setTimeout(() => { bar.classList.remove('visible'); fill.style.width = '0%'; }, 800);
+    }
+  };
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  function openModal(id)  { document.getElementById(id).classList.add('visible'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('visible'); }
+
+  // New room
+  document.getElementById('new-room-btn').onclick = () => openModal('room-modal');
+  document.getElementById('room-modal-cancel').onclick = () => closeModal('room-modal');
+  document.getElementById('room-modal-create').onclick = async () => {
+    const name = document.getElementById('room-name-input').value.trim().toLowerCase();
+    const desc = document.getElementById('room-desc-input').value.trim();
+    const status = document.getElementById('room-modal-status');
+    if (!name) { status.textContent = '// name required'; return; }
+
+    const { data: room, error } = await db.from('rooms')
+      .insert({ name, description: desc, is_dm: false })
+      .select().single();
+    if (error) { status.textContent = '// ' + error.message; return; }
+
+    await db.from('room_members').insert({ room_id: room.id, user_id: session.user.id });
+    closeModal('room-modal');
+    document.getElementById('room-name-input').value = '';
+    document.getElementById('room-desc-input').value = '';
+    await loadSidebar();
+    selectRoom(room.id);
+  };
+
+  // Invite
+  document.getElementById('invite-btn').onclick = () => openModal('invite-modal');
+  document.getElementById('invite-modal-cancel').onclick = () => closeModal('invite-modal');
+  document.getElementById('invite-modal-add').onclick = async () => {
+    const raw = document.getElementById('invite-hash-input').value.trim().replace(/^#/, '');
+    const status = document.getElementById('invite-modal-status');
+    if (!raw) { status.textContent = '// hash required'; return; }
+
+    const { data: user } = await db.from('users').select('id').eq('hash', raw).maybeSingle();
+    if (!user) { status.textContent = '// user not found'; return; }
+
+    const { error } = await db.from('room_members')
+      .upsert({ room_id: currentRoomId, user_id: user.id }, { onConflict: 'room_id,user_id' });
+    if (error) { status.textContent = '// ' + error.message; return; }
+
+    closeModal('invite-modal');
+    document.getElementById('invite-hash-input').value = '';
+  };
+
+  // DM
+  document.getElementById('new-dm-btn').onclick = () => openModal('dm-modal');
+  document.getElementById('dm-modal-cancel').onclick = () => closeModal('dm-modal');
+  document.getElementById('dm-modal-open').onclick = async () => {
+    const raw = document.getElementById('dm-hash-input').value.trim().replace(/^#/, '');
+    const status = document.getElementById('dm-modal-status');
+    if (!raw) { status.textContent = '// hash required'; return; }
+    if (raw === myProfile.hash) { status.textContent = '// that\'s you'; return; }
+
+    const { data: other } = await db.from('users').select('id,hash').eq('hash', raw).maybeSingle();
+    if (!other) { status.textContent = '// user not found'; return; }
+
+    // Canonical room name: dm:smaller:larger
+    const hashes = [myProfile.hash, other.hash].sort();
+    const roomName = 'dm:' + hashes[0] + ':' + hashes[1];
+
+    let { data: room } = await db.from('rooms').select('*').eq('name', roomName).maybeSingle();
+    if (!room) {
+      const { data: newRoom, error } = await db.from('rooms')
+        .insert({ name: roomName, is_dm: true }).select().single();
+      if (error) { status.textContent = '// ' + error.message; return; }
+      room = newRoom;
+      await db.from('room_members').insert([
+        { room_id: room.id, user_id: session.user.id },
+        { room_id: room.id, user_id: other.id },
+      ]);
+    }
+
+    closeModal('dm-modal');
+    document.getElementById('dm-hash-input').value = '';
+    await loadSidebar();
+    selectRoom(room.id);
+  };
+
+  // ── Sign out ──────────────────────────────────────────────────────────────
+  document.getElementById('signout-btn').onclick = () => Auth.signout();
+  document.getElementById('settings-btn').onclick = () => window.location.href = '/settings.html';
+
+  // ── Input helpers ─────────────────────────────────────────────────────────
+  window.autoResize = function(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  };
+
+  document.getElementById('msg-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      window.sendMessage();
+    }
+  });
+
+  document.getElementById('msg-input').addEventListener('input', function() {
+    autoResize(this);
+  });
+
+  // ── Mobile ────────────────────────────────────────────────────────────────
+  function showMain() {
+    document.getElementById('sidebar').classList.add('hidden');
+    document.getElementById('main').classList.add('visible');
+  }
+  window.showSidebar = function() {
+    document.getElementById('sidebar').classList.remove('hidden');
+    document.getElementById('main').classList.remove('visible');
+  };
+  document.getElementById('back-btn').onclick = window.showSidebar;
+
+  // ── Utils ─────────────────────────────────────────────────────────────────
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function hideLoading() {
+    const el = document.getElementById('loading');
+    if (el) { el.classList.add('hidden'); setTimeout(() => el.remove(), 500); }
+  }
+})();
