@@ -1,12 +1,9 @@
 // HashChat — main app logic
-// Handles: rooms, DMs, messages, realtime, file uploads, reply, modals
 
 (async () => {
-  // ── Auth guard ────────────────────────────────────────────────────────────
   const session = await Auth.requireAuth();
   if (!session) return;
 
-  // ── State ─────────────────────────────────────────────────────────────────
   let currentRoomId   = null;
   let currentRoomName = '';
   let currentRoomIsDM = false;
@@ -16,27 +13,24 @@
 
   const GENERAL_ID = '00000000-0000-0000-0000-000000000001';
 
-  // ── Init ──────────────────────────────────────────────────────────────────
   await Notifications.init();
   await loadProfile();
   await ensureGeneralMembership();
   await loadSidebar();
   hideLoading();
 
-  // Check for ?room= query param (from push notification click)
   const params = new URLSearchParams(location.search);
   const targetRoom = params.get('room');
   if (targetRoom) selectRoom(targetRoom);
   else selectRoom(GENERAL_ID);
 
-  // Listen for service worker FOCUS_ROOM messages
   navigator.serviceWorker?.addEventListener('message', e => {
     if (e.data?.type === 'FOCUS_ROOM') selectRoom(e.data.roomId);
   });
 
   window.addEventListener('focus', () => Notifications.clearBadge());
 
-  // ── Profile ───────────────────────────────────────────────────────────────
+  // Profile
   async function loadProfile(retries = 5) {
     for (let i = 0; i < retries; i++) {
       const { data } = await db.from('users').select('*').eq('id', session.user.id).maybeSingle();
@@ -46,7 +40,7 @@
     if (!myProfile) return;
     const initials = (myProfile.name || '?').slice(0, 2).toUpperCase();
     const av = document.getElementById('user-avatar');
-    av.textContent    = initials;
+    av.textContent = initials;
     av.style.background = myProfile.color || '#4D96FF';
     document.getElementById('user-name').textContent = myProfile.name || 'anon';
     document.getElementById('user-hash').textContent = '#' + myProfile.hash;
@@ -63,34 +57,35 @@
     }
   }
 
-  // ── Sidebar ───────────────────────────────────────────────────────────────
+  // Sidebar
   async function loadSidebar() {
     const { data: memberships } = await db.from('room_members')
       .select('room_id, rooms(id, name, description, is_dm)')
       .eq('user_id', session.user.id).is('left_at', null);
-
     if (!memberships) return;
-
     const rooms = [], dms = [];
     for (const m of memberships) {
       if (!m.rooms) continue;
       m.rooms.is_dm ? dms.push(m.rooms) : rooms.push(m.rooms);
     }
-
-    renderRoomList('room-list', rooms, false);
-    renderDMList('dm-list', dms);
+    renderRoomList('room-list', rooms);
+    await renderDMList('dm-list', dms);
   }
 
-  function renderRoomList(elId, rooms, isDM) {
+  function renderRoomList(elId, rooms) {
     const el = document.getElementById(elId);
     el.innerHTML = '';
     for (const room of rooms) {
       const item = document.createElement('div');
       item.className = 'room-item';
       item.dataset.id = room.id;
-      item.innerHTML =
-        '<span class="room-prefix">#</span>' +
-        '<span>' + esc(room.name) + '</span>';
+      const prefix = document.createElement('span');
+      prefix.className = 'room-prefix';
+      prefix.textContent = '#';
+      const name = document.createElement('span');
+      name.textContent = room.name;
+      item.appendChild(prefix);
+      item.appendChild(name);
       item.onclick = () => selectRoom(room.id);
       el.appendChild(item);
     }
@@ -100,16 +95,21 @@
     const el = document.getElementById(elId);
     el.innerHTML = '';
     for (const room of dms) {
-      // Resolve the other person's name from the dm:hash1:hash2 format
-      const parts = room.name.split(':'); // ['dm','hash1','hash2']
+      const parts = room.name.split(':');
       const otherHash = parts[1] === myProfile.hash ? parts[2] : parts[1];
       const { data: other } = await db.from('users').select('name,color').eq('hash', otherHash).maybeSingle();
       const item = document.createElement('div');
       item.className = 'room-item';
       item.dataset.id = room.id;
-      item.innerHTML =
-        '<span class="room-prefix" style="color:' + (other?.color || '#fff') + ';opacity:1">·</span>' +
-        '<span>' + esc(other?.name || otherHash) + '</span>';
+      const dot = document.createElement('span');
+      dot.className = 'room-prefix';
+      dot.textContent = '\u00b7';
+      dot.style.color = other?.color || '#fff';
+      dot.style.opacity = '1';
+      const name = document.createElement('span');
+      name.textContent = other?.name || otherHash;
+      item.appendChild(dot);
+      item.appendChild(name);
       item.onclick = () => selectRoom(room.id);
       el.appendChild(item);
     }
@@ -121,31 +121,22 @@
     });
   }
 
-  // ── Room selection ────────────────────────────────────────────────────────
+  // Room selection
   async function selectRoom(roomId) {
     currentRoomId = roomId;
     clearReply();
-
-    // Show chat view
-    document.getElementById('no-room').style.display  = 'none';
+    document.getElementById('no-room').style.display = 'none';
     const cv = document.getElementById('chat-view');
     cv.style.display = 'flex';
-
     setActiveRoom(roomId);
-    showMain(); // mobile
-
-    // Fetch room info
+    showMain();
     const { data: room } = await db.from('rooms').select('*').eq('id', roomId).maybeSingle();
     if (!room) return;
-
     currentRoomName = room.name;
     currentRoomIsDM = room.is_dm;
-
-    document.getElementById('chat-header-name').textContent = room.is_dm
-      ? dmDisplayName(room.name) : room.name;
+    document.getElementById('chat-header-name').textContent = room.is_dm ? dmDisplayName(room.name) : room.name;
     document.getElementById('chat-header-desc').textContent = room.description || '';
     document.getElementById('invite-btn').style.display = room.is_dm ? 'none' : '';
-
     await loadMessages(roomId);
     subscribeRealtime(roomId);
   }
@@ -155,10 +146,14 @@
     return parts[1] === myProfile?.hash ? parts[2] : parts[1];
   }
 
-  // ── Messages ──────────────────────────────────────────────────────────────
+  // Messages
   async function loadMessages(roomId) {
     const wrap = document.getElementById('messages');
-    wrap.innerHTML = '<div class="empty-state"><div class="empty-state-big">#</div><div>// no messages yet</div></div>';
+    wrap.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = '<div class="empty-state-big">#</div><div>// no messages yet</div>';
+    wrap.appendChild(empty);
 
     const { data: msgs } = await db.from('messages')
       .select('*, users(name, hash, color)')
@@ -169,7 +164,6 @@
     if (!msgs?.length) return;
     wrap.innerHTML = '';
     let lastUserId = null, lastDate = null;
-
     for (const msg of msgs) {
       const date = new Date(msg.timestamp).toDateString();
       if (date !== lastDate) {
@@ -177,20 +171,13 @@
         lastDate = date;
         lastUserId = null;
       }
-      const collapsed = msg.user_id === lastUserId;
-      appendMessage(wrap, msg, collapsed);
+      appendMessage(wrap, msg, msg.user_id === lastUserId);
       lastUserId = msg.user_id;
     }
     scrollToBottom();
   }
 
-  function appendMessage(wrap, msg, collapsed = false) {
-    // Resolve reply
-    let replyHTML = '';
-    if (msg.reply_id) {
-      replyHTML = '<div class="msg-reply" data-reply-id="' + msg.reply_id + '">↩ reply</div>';
-    }
-
+  function appendMessage(wrap, msg, collapsed) {
     const user     = msg.users || {};
     const initials = (user.name || '?').slice(0, 2).toUpperCase();
     const color    = user.color || '#4D96FF';
@@ -199,40 +186,98 @@
     const el = document.createElement('div');
     el.className = 'msg' + (collapsed ? ' collapsed' : '');
     el.dataset.id = msg.id;
-    el.innerHTML =
-      '<div class="msg-avatar" style="background:' + color + '">' + esc(initials) + '</div>' +
-      '<div class="msg-body">' +
-        '<div class="msg-meta">' +
-          '<span class="msg-name" style="color:' + color + '">' + esc(user.name || 'anon') + '</span>' +
-          '<span class="msg-hash-tag">#' + esc(user.hash || '?') + '</span>' +
-          '<span class="msg-time">' + time + '</span>' +
-        '</div>' +
-        replyHTML +
-        renderContent(msg) +
-        '<div class="msg-actions">' +
-          '<button class="msg-action" onclick="window.replyTo('' + msg.id + '','' + esc(user.name) + '')">reply</button>' +
-        '</div>' +
-      '</div>';
+    el.dataset.userId = msg.user_id;
 
+    // Avatar
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.style.background = color;
+    avatar.textContent = initials;
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+
+    // Meta
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'msg-name';
+    nameEl.style.color = color;
+    nameEl.textContent = user.name || 'anon';
+    const hashEl = document.createElement('span');
+    hashEl.className = 'msg-hash-tag';
+    hashEl.textContent = '#' + (user.hash || '?');
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = time;
+    meta.appendChild(nameEl);
+    meta.appendChild(hashEl);
+    meta.appendChild(timeEl);
+    body.appendChild(meta);
+
+    // Reply
+    if (msg.reply_id) {
+      const replyEl = document.createElement('div');
+      replyEl.className = 'msg-reply';
+      replyEl.textContent = '\u21a9 reply';
+      body.appendChild(replyEl);
+    }
+
+    // Content
+    body.appendChild(renderContent(msg));
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    const replyBtn = document.createElement('button');
+    replyBtn.className = 'msg-action';
+    replyBtn.textContent = 'reply';
+    replyBtn.onclick = () => window.replyTo(msg.id, user.name || 'anon');
+    actions.appendChild(replyBtn);
+    body.appendChild(actions);
+
+    el.appendChild(avatar);
+    el.appendChild(body);
     wrap.appendChild(el);
   }
 
   function renderContent(msg) {
-    // Detect if content is a file URL from our server
+    const wrapper = document.createElement('div');
     try {
       const url = new URL(msg.content);
       const ext = url.pathname.split('.').pop().toLowerCase();
-      const imageExts = ['jpg','jpeg','png','gif','webp','svg'];
-      if (imageExts.includes(ext)) {
-        return '<img class="msg-image" src="' + esc(msg.content) + '" alt="image" onclick="window.open(this.src)" />';
+      if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) {
+        const img = document.createElement('img');
+        img.className = 'msg-image';
+        img.src = msg.content;
+        img.alt = 'image';
+        img.onclick = () => window.open(msg.content);
+        wrapper.appendChild(img);
+        return wrapper;
       }
       const filename = decodeURIComponent(url.pathname.split('/').pop());
-      return '<a class="msg-file" href="' + esc(msg.content) + '" target="_blank" rel="noopener">' +
-        '<span class="msg-file-icon">📎</span>' +
-        '<span class="msg-file-name">' + esc(filename) + '</span>' +
-      '</a>';
+      const link = document.createElement('a');
+      link.className = 'msg-file';
+      link.href = msg.content;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      const icon = document.createElement('span');
+      icon.className = 'msg-file-icon';
+      icon.textContent = '\ud83d\udcce';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'msg-file-name';
+      nameEl.textContent = filename;
+      link.appendChild(icon);
+      link.appendChild(nameEl);
+      wrapper.appendChild(link);
+      return wrapper;
     } catch {}
-    return '<div class="msg-text">' + esc(msg.content) + '</div>';
+    const text = document.createElement('div');
+    text.className = 'msg-text';
+    text.textContent = msg.content;
+    wrapper.appendChild(text);
+    return wrapper;
   }
 
   function appendDateDivider(wrap, timestamp) {
@@ -247,7 +292,7 @@
     wrap.scrollTop = wrap.scrollHeight;
   }
 
-  // ── Realtime ──────────────────────────────────────────────────────────────
+  // Realtime
   function subscribeRealtime(roomId) {
     if (realtimeSub) db.removeChannel(realtimeSub);
     realtimeSub = db.channel('room:' + roomId)
@@ -256,17 +301,12 @@
         filter: 'room_id=eq.' + roomId,
       }, async payload => {
         const msg = payload.new;
-        // Fetch user profile for the new message
         const { data: user } = await db.from('users').select('name,hash,color').eq('id', msg.user_id).maybeSingle();
         msg.users = user;
-
         const wrap = document.getElementById('messages');
         const lastMsg = wrap.querySelector('.msg:last-child');
-        const lastUserId = lastMsg?.dataset?.userId;
-        appendMessage(wrap, msg, msg.user_id === lastUserId);
+        appendMessage(wrap, msg, lastMsg?.dataset?.userId === msg.user_id);
         scrollToBottom();
-
-        // Notify if not sent by us
         if (msg.user_id !== session.user.id) {
           Notifications.notify({
             senderName:  user?.name || 'someone',
@@ -281,30 +321,21 @@
       .subscribe();
   }
 
-  // ── Send message ──────────────────────────────────────────────────────────
+  // Send
   window.sendMessage = async function() {
     const input = document.getElementById('msg-input');
     const content = input.value.trim();
     if (!content || !currentRoomId) return;
-
     const btn = document.getElementById('send-btn');
     btn.disabled = true;
     input.value = '';
     autoResize(input);
-
     try {
       const { data: { session: s } } = await db.auth.getSession();
       const res = await fetch('/api/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + s.access_token,
-        },
-        body: JSON.stringify({
-          roomId: currentRoomId,
-          content,
-          replyId: replyToMsg?.id || null,
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
+        body: JSON.stringify({ roomId: currentRoomId, content, replyId: replyToMsg?.id || null }),
       });
       if (!res.ok) throw new Error(await res.text());
       clearReply();
@@ -316,69 +347,53 @@
     }
   };
 
-  // ── Reply ─────────────────────────────────────────────────────────────────
+  // Reply
   window.replyTo = function(msgId, name) {
     replyToMsg = { id: msgId, name };
-    const bar = document.getElementById('reply-preview');
-    bar.classList.add('visible');
-    document.getElementById('reply-text').textContent = '↩ replying to ' + name;
+    document.getElementById('reply-preview').classList.add('visible');
+    document.getElementById('reply-text').textContent = '\u21a9 replying to ' + name;
     document.getElementById('msg-input').focus();
   };
 
-  window.clearReply = function() {
+  function clearReply() {
     replyToMsg = null;
     document.getElementById('reply-preview')?.classList.remove('visible');
-  };
-
+  }
+  window.clearReply = clearReply;
   document.getElementById('reply-cancel').onclick = clearReply;
 
-  // ── File upload ───────────────────────────────────────────────────────────
-  document.getElementById('attach-btn').onclick = () =>
-    document.getElementById('file-input').click();
-
+  // File upload
+  document.getElementById('attach-btn').onclick = () => document.getElementById('file-input').click();
   document.getElementById('file-input').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file || !currentRoomId) return;
     e.target.value = '';
-
-    const bar   = document.getElementById('upload-bar');
-    const fill  = document.getElementById('upload-fill');
+    const bar = document.getElementById('upload-bar');
+    const fill = document.getElementById('upload-fill');
     const label = document.getElementById('upload-label');
     bar.classList.add('visible');
-    label.textContent = 'uploading ' + file.name + '…';
+    label.textContent = 'uploading ' + file.name + '\u2026';
     fill.style.width = '0%';
-
-    // Fake progress — XHR would give real progress but fetch is simpler
     let prog = 0;
-    const tick = setInterval(() => {
-      prog = Math.min(prog + 10, 85);
-      fill.style.width = prog + '%';
-    }, 200);
-
+    const tick = setInterval(() => { prog = Math.min(prog + 10, 85); fill.style.width = prog + '%'; }, 200);
     try {
       const { data: { session: s } } = await db.auth.getSession();
       const form = new FormData();
       form.append('file', file);
       form.append('roomId', currentRoomId);
-
       const res = await fetch('/upload/file', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + s.access_token },
         body: form,
       });
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) throw new Error('upload failed');
       const { url } = await res.json();
-
       fill.style.width = '100%';
       clearInterval(tick);
-
-      // Send the URL as a message — renderContent detects it as file/image
+      const { data: { session: s2 } } = await db.auth.getSession();
       await fetch('/api/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + s.access_token,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s2.access_token },
         body: JSON.stringify({ roomId: currentRoomId, content: url }),
       });
     } catch (err) {
@@ -390,11 +405,13 @@
     }
   };
 
-  // ── Modals ────────────────────────────────────────────────────────────────
+  // Modals
   function openModal(id)  { document.getElementById(id).classList.add('visible'); }
-  function closeModal(id) { document.getElementById(id).classList.remove('visible'); }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('visible');
+    document.getElementById(id).querySelectorAll('.modal-status').forEach(el => el.textContent = '');
+  }
 
-  // New room
   document.getElementById('new-room-btn').onclick = () => openModal('room-modal');
   document.getElementById('room-modal-cancel').onclick = () => closeModal('room-modal');
   document.getElementById('room-modal-create').onclick = async () => {
@@ -402,12 +419,8 @@
     const desc = document.getElementById('room-desc-input').value.trim();
     const status = document.getElementById('room-modal-status');
     if (!name) { status.textContent = '// name required'; return; }
-
-    const { data: room, error } = await db.from('rooms')
-      .insert({ name, description: desc, is_dm: false })
-      .select().single();
+    const { data: room, error } = await db.from('rooms').insert({ name, description: desc, is_dm: false }).select().single();
     if (error) { status.textContent = '// ' + error.message; return; }
-
     await db.from('room_members').insert({ room_id: room.id, user_id: session.user.id });
     closeModal('room-modal');
     document.getElementById('room-name-input').value = '';
@@ -416,45 +429,34 @@
     selectRoom(room.id);
   };
 
-  // Invite
   document.getElementById('invite-btn').onclick = () => openModal('invite-modal');
   document.getElementById('invite-modal-cancel').onclick = () => closeModal('invite-modal');
   document.getElementById('invite-modal-add').onclick = async () => {
     const raw = document.getElementById('invite-hash-input').value.trim().replace(/^#/, '');
     const status = document.getElementById('invite-modal-status');
     if (!raw) { status.textContent = '// hash required'; return; }
-
     const { data: user } = await db.from('users').select('id').eq('hash', raw).maybeSingle();
     if (!user) { status.textContent = '// user not found'; return; }
-
-    const { error } = await db.from('room_members')
-      .upsert({ room_id: currentRoomId, user_id: user.id }, { onConflict: 'room_id,user_id' });
+    const { error } = await db.from('room_members').upsert({ room_id: currentRoomId, user_id: user.id }, { onConflict: 'room_id,user_id' });
     if (error) { status.textContent = '// ' + error.message; return; }
-
     closeModal('invite-modal');
     document.getElementById('invite-hash-input').value = '';
   };
 
-  // DM
   document.getElementById('new-dm-btn').onclick = () => openModal('dm-modal');
   document.getElementById('dm-modal-cancel').onclick = () => closeModal('dm-modal');
   document.getElementById('dm-modal-open').onclick = async () => {
     const raw = document.getElementById('dm-hash-input').value.trim().replace(/^#/, '');
     const status = document.getElementById('dm-modal-status');
     if (!raw) { status.textContent = '// hash required'; return; }
-    if (raw === myProfile.hash) { status.textContent = '// that\'s you'; return; }
-
+    if (raw === myProfile.hash) { status.textContent = '// that is you'; return; }
     const { data: other } = await db.from('users').select('id,hash').eq('hash', raw).maybeSingle();
     if (!other) { status.textContent = '// user not found'; return; }
-
-    // Canonical room name: dm:smaller:larger
     const hashes = [myProfile.hash, other.hash].sort();
     const roomName = 'dm:' + hashes[0] + ':' + hashes[1];
-
     let { data: room } = await db.from('rooms').select('*').eq('name', roomName).maybeSingle();
     if (!room) {
-      const { data: newRoom, error } = await db.from('rooms')
-        .insert({ name: roomName, is_dm: true }).select().single();
+      const { data: newRoom, error } = await db.from('rooms').insert({ name: roomName, is_dm: true }).select().single();
       if (error) { status.textContent = '// ' + error.message; return; }
       room = newRoom;
       await db.from('room_members').insert([
@@ -462,53 +464,40 @@
         { room_id: room.id, user_id: other.id },
       ]);
     }
-
     closeModal('dm-modal');
     document.getElementById('dm-hash-input').value = '';
     await loadSidebar();
     selectRoom(room.id);
   };
 
-  // ── Sign out ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('visible'); };
+  });
+
   document.getElementById('signout-btn').onclick = () => Auth.signout();
   document.getElementById('settings-btn').onclick = () => window.location.href = '/settings.html';
 
-  // ── Input helpers ─────────────────────────────────────────────────────────
   window.autoResize = function(el) {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   };
 
   document.getElementById('msg-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      window.sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.sendMessage(); }
   });
+  document.getElementById('msg-input').addEventListener('input', function() { autoResize(this); });
 
-  document.getElementById('msg-input').addEventListener('input', function() {
-    autoResize(this);
-  });
-
-  // ── Mobile ────────────────────────────────────────────────────────────────
   function showMain() {
-    document.getElementById('sidebar').classList.add('hidden');
-    document.getElementById('main').classList.add('visible');
+    if (window.innerWidth <= 600) {
+      document.getElementById('sidebar').classList.add('hidden');
+      document.getElementById('main').classList.add('visible');
+    }
   }
   window.showSidebar = function() {
     document.getElementById('sidebar').classList.remove('hidden');
     document.getElementById('main').classList.remove('visible');
   };
   document.getElementById('back-btn').onclick = window.showSidebar;
-
-  // ── Utils ─────────────────────────────────────────────────────────────────
-  function esc(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
 
   function hideLoading() {
     const el = document.getElementById('loading');
