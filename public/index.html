@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HashChat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #05080f;
+      --glass: rgba(255,255,255,0.03);
+      --border: rgba(255,255,255,0.07);
+      --border-focus: rgba(255,255,255,0.18);
+      --text: #e8eaf0;
+      --text-dim: rgba(255,255,255,0.35);
+      --text-dimmer: rgba(255,255,255,0.18);
+      --accent: #ffffff;
+      --error: #ff6b6b;
+      --success: #6bcb77;
+      --mono: 'Geist Mono', monospace;
+      --sans: 'Geist', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
+
+    .bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+    .bg-glow-1 {
+      position: absolute; width: 600px; height: 600px; top: -100px; left: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%);
+      filter: blur(40px);
+      animation: glow-drift 8s ease-in-out infinite alternate;
+    }
+    .bg-glow-2 {
+      position: absolute; width: 400px; height: 400px; bottom: -50px; right: -100px;
+      background: radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%);
+      filter: blur(60px);
+    }
+    .bg-grid {
+      position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black, transparent);
+    }
+    @keyframes glow-drift {
+      from { transform: translateX(-55%) translateY(0px); }
+      to   { transform: translateX(-45%) translateY(30px); }
+    }
+
+    .page { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 40px; animation: fade-up 0.6s ease both; }
+    .logo-hash { font-family: var(--mono); font-size: 28px; font-weight: 500; color: var(--accent); letter-spacing: -1px; }
+    .logo-name { font-size: 13px; font-weight: 400; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .card {
+      width: 100%; max-width: 380px;
+      background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 32px;
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.02) inset, 0 32px 64px rgba(0,0,0,0.4);
+      animation: fade-up 0.6s ease 0.1s both;
+    }
+
+    .tabs { display: flex; gap: 4px; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 4px; margin-bottom: 28px; }
+    .tab { flex: 1; padding: 8px; border: none; background: transparent; color: var(--text-dim); font-family: var(--sans); font-size: 13px; font-weight: 500; border-radius: 7px; cursor: pointer; transition: all 0.2s ease; }
+    .tab.active { background: rgba(255,255,255,0.07); color: var(--accent); }
+
+    .form { display: flex; flex-direction: column; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .label { font-size: 11px; font-weight: 500; color: var(--text-dimmer); text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--mono); }
+    .input { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 9px; padding: 11px 14px; color: var(--text); font-family: var(--sans); font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; width: 100%; }
+    .input::placeholder { color: var(--text-dimmer); }
+    .input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(255,255,255,0.04); }
+
+    .btn { padding: 11px 20px; border-radius: 9px; border: none; font-family: var(--sans); font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; margin-top: 4px; width: 100%; }
+    .btn-primary { background: var(--accent); color: #05080f; }
+    .btn-primary:hover { background: #d4d8e8; transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .status { font-size: 13px; text-align: center; min-height: 20px; font-family: var(--mono); }
+    .status.error { color: var(--error); }
+    .status.success { color: var(--success); }
+
+    @keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+    .form-fields { display: none; flex-direction: column; gap: 14px; }
+    .form-fields.active { display: flex; }
+
+    .footer { margin-top: 24px; font-size: 11px; color: var(--text-dimmer); font-family: var(--mono); animation: fade-up 0.6s ease 0.2s both; }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <div class="bg-glow-1"></div>
+    <div class="bg-glow-2"></div>
+    <div class="bg-grid"></div>
+  </div>
+
+  <div class="page">
+    <div class="logo">
+      <span class="logo-hash">#</span>
+      <span class="logo-name">HashChat</span>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" id="tab-login" onclick="switchTab('login')">Sign in</button>
+        <button class="tab" id="tab-signup" onclick="switchTab('signup')">Sign up</button>
+      </div>
+
+      <div class="form">
+        <div class="form-fields active" id="fields-login">
+          <div class="field">
+            <label class="label">Email</label>
+            <input class="input" id="login-email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label class="label">Password</label>
+            <input class="input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+          </div>
+        </div>
+
+        <div class="form-fields" id="fields-signup">
+          <div class="field">
+            <label class="label">Email</label>
+            <input class="input" id="signup-email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label class="label">Password</label>
+            <input class="input" id="signup-password" type="password" placeholder="min. 8 characters" autocomplete="new-password" />
+          </div>
+        </div>
+
+        <div class="status" id="status"></div>
+        <button class="btn btn-primary" id="submit-btn" onclick="handleSubmit()">Sign in</button>
+      </div>
+    </div>
+
+    <div class="footer">realtime · encrypted · no logs</div>
+  </div>
+
+  <script src="/config.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    let currentTab = 'login';
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+      document.getElementById('fields-login').classList.toggle('active', tab === 'login');
+      document.getElementById('fields-signup').classList.toggle('active', tab === 'signup');
+      document.getElementById('submit-btn').textContent = tab === 'login' ? 'Sign in' : 'Create account';
+      setStatus('', '');
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    async function handleSubmit() {
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      setStatus('', '');
+      try {
+        if (currentTab === 'login') {
+          await Auth.login(
+            document.getElementById('login-email').value.trim(),
+            document.getElementById('login-password').value
+          );
+        } else {
+          await Auth.signup(
+            document.getElementById('signup-email').value.trim(),
+            document.getElementById('signup-password').value
+          );
+          setStatus('Account created! Signing you in…', 'success');
+        }
+        window.location.href = '/app.html';
+      } catch (err) {
+        setStatus(err.message || 'Something went wrong', 'error');
+        btn.disabled = false;
+      }
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
+  </script>
+</body>
+</html>

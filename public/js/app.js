@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>chat // settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #05080f; --glass: rgba(255,255,255,0.03); --glass-hover: rgba(255,255,255,0.055);
+      --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.13);
+      --text: rgba(255,255,255,0.88); --text-dim: rgba(255,255,255,0.35); --text-muted: rgba(255,255,255,0.12);
+      --accent: #ffffff; --error: #ff5555; --success: #55ffaa;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Geist', sans-serif; font-weight: 300; }
+    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(80,100,200,0.07) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(60,80,180,0.05) 0%, transparent 60%); pointer-events: none; z-index: 0; }
+    body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+    .page { position: relative; z-index: 1; max-width: 520px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2.5rem; }
+    .back-link { font-family: 'Geist Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+    .back-link:hover { color: var(--accent); }
+    .page-title { font-family: 'Geist Mono', monospace; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
+    .user-preview { display: flex; align-items: center; gap: 1rem; padding: 1.1rem; background: var(--glass); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 1rem; }
+    .preview-avatar { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 0.7rem; font-weight: 500; color: #050810; box-shadow: 0 2px 10px rgba(0,0,0,0.4); flex-shrink: 0; }
+    .preview-name { font-size: 0.88rem; font-weight: 400; margin-bottom: 2px; }
+    .preview-hash { font-family: 'Geist Mono', monospace; font-size: 0.6rem; color: var(--text-muted); }
+    .section { background: var(--glass); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem; overflow: hidden; }
+    .section-title { font-family: 'Geist Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); padding: 0.9rem 1.1rem 0.55rem; }
+    .setting-row { padding: 0.75rem 1.1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--border); }
+    .setting-label { font-size: 0.8rem; font-weight: 400; }
+    .setting-desc { font-family: 'Geist Mono', monospace; font-size: 0.58rem; color: var(--text-muted); margin-top: 2px; }
+    .setting-body { padding: 0.75rem 1.1rem 1.1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.65rem; }
+    .s-input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: 'Geist', sans-serif; font-size: 0.8rem; font-weight: 300; padding: 0.6rem 0.85rem; outline: none; transition: border-color 0.15s, background 0.15s; width: 100%; }
+    .s-input:focus { border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
+    .s-input::placeholder { color: var(--text-muted); }
+    .input-row { display: flex; gap: 0.5rem; }
+    .input-row .s-input { flex: 1; }
+    .s-btn { padding: 0.55rem 1rem; border-radius: 7px; border: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .s-btn.primary { background: rgba(255,255,255,0.92); color: var(--bg); border-color: transparent; }
+    .s-btn.primary:hover { background: #fff; }
+    .s-btn.primary:disabled { opacity: 0.3; cursor: not-allowed; }
+    .s-btn.ghost { background: none; color: var(--text-dim); }
+    .s-btn.ghost:hover { background: var(--glass-hover); color: var(--text); border-color: var(--border-hover); }
+    .s-btn.danger { background: rgba(255,85,85,0.08); color: var(--error); border-color: rgba(255,85,85,0.15); }
+    .s-btn.danger:hover { background: rgba(255,85,85,0.15); }
+    .color-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; }
+    .swatch { aspect-ratio: 1; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
+    .swatch:hover { transform: scale(1.1); }
+    .swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255,255,255,0.2); transform: scale(1.08); }
+    .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track { position: absolute; inset: 0; background: rgba(255,255,255,0.08); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background 0.2s; }
+    .toggle input:checked + .toggle-track { background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.2); }
+    .toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: var(--text-dim); border-radius: 50%; transition: transform 0.2s, background 0.2s; }
+    .toggle input:checked + .toggle-track::after { transform: translateX(16px); background: var(--accent); }
+    .s-status { font-family: 'Geist Mono', monospace; font-size: 0.6rem; min-height: 1rem; }
+    .s-status.error { color: var(--error); } .s-status.success { color: var(--success); }
+    .badge { font-family: 'Geist Mono', monospace; font-size: 0.55rem; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px; }
+    .badge.on { background: rgba(85,255,170,0.12); color: var(--success); }
+    .badge.off { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    .danger-zone { border-color: rgba(255,85,85,0.15); }
+    .danger-zone .section-title { color: rgba(255,85,85,0.5); }
+    @media (max-width: 600px) { .page { padding: 2rem 1rem 4rem; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page-header">
+      <a class="back-link" href="/app.html">← back</a>
+      <span class="page-title">// settings</span>
+    </div>
+    <div class="user-preview">
+      <div class="preview-avatar" id="preview-avatar"></div>
+      <div>
+        <div class="preview-name" id="preview-name">loading…</div>
+        <div class="preview-hash" id="preview-hash">#—</div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">// profile</div>
+      <div class="setting-body">
+        <div class="input-row">
+          <input class="s-input" id="name-input" type="text" placeholder="display name" maxlength="32" />
+          <button class="s-btn primary" onclick="saveName()">save</button>
+        </div>
+        <div class="s-status" id="name-status"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">// color</div>
+      <div class="setting-body">
+        <div class="color-grid" id="color-grid"></div>
+        <div class="s-status" id="color-status"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">// notifications</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">os notifications</div>
+          <div class="setting-desc" id="notif-desc">enable push when tab is backgrounded</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="notif-toggle" onchange="toggleNotifications(this)" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">// security</div>
+      <div class="setting-body">
+        <input class="s-input" id="new-password" type="password" placeholder="new password" autocomplete="new-password" />
+        <div class="input-row">
+          <input class="s-input" id="confirm-password" type="password" placeholder="confirm password" />
+          <button class="s-btn primary" onclick="changePassword()">update</button>
+        </div>
+        <div class="s-status" id="password-status"></div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">two-factor auth</div>
+          <div class="setting-desc">totp via authenticator app</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.65rem">
+          <span class="badge off" id="twofa-badge">off</span>
+          <button class="s-btn ghost" id="twofa-btn" onclick="toggle2FA()">enable</button>
+        </div>
+      </div>
+    </div>
+    <div class="section danger-zone">
+      <div class="section-title">// danger zone</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">delete account</div>
+          <div class="setting-desc">permanently wipes all data. cannot be undone.</div>
+        </div>
+        <button class="s-btn danger" onclick="deleteAccount()">delete</button>
+      </div>
+    </div>
+  </div>
+  <script src="/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="/js/settings.js"></script>
+</body>
+</html>
