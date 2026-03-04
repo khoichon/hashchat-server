@@ -376,7 +376,15 @@
   document.getElementById('reply-cancel').onclick = clearReply;
 
   // File upload
-  document.getElementById('attach-btn').onclick = () => document.getElementById('file-input').click();
+  document.getElementById('attach-btn').onclick = () => {
+    Notifications.showToast({
+      senderName: 'system',
+      senderColor: 'var(--text-muted)',
+      content: 'file uploads temporarily unavailable',
+      roomName: 'system',
+      isDM: false,
+    });
+  };
   document.getElementById('file-input').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file || !currentRoomId) return;
