@@ -381,39 +381,51 @@
     const file = e.target.files[0];
     if (!file || !currentRoomId) return;
     e.target.value = '';
-    const bar = document.getElementById('upload-bar');
-    const fill = document.getElementById('upload-fill');
+
+    const bar   = document.getElementById('upload-bar');
+    const fill  = document.getElementById('upload-fill');
     const label = document.getElementById('upload-label');
     bar.classList.add('visible');
-    label.textContent = 'uploading ' + file.name + '\u2026';
+    label.textContent = 'uploading ' + file.name + '…';
     fill.style.width = '0%';
-    let prog = 0;
-    const tick = setInterval(() => { prog = Math.min(prog + 10, 85); fill.style.width = prog + '%'; }, 200);
+
     try {
       const { data: { session: s } } = await db.auth.getSession();
-      const form = new FormData();
-      form.append('file', file);
-      form.append('roomId', currentRoomId);
-      const res = await fetch('/upload/file', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + s.access_token },
-        body: form,
+
+      // Step 1: get presigned URL from our server
+      const presignRes = await fetch(
+        '/upload/presign?filename=' + encodeURIComponent(file.name) +
+        '&filetype=' + encodeURIComponent(file.type || 'application/octet-stream'),
+        { headers: { 'Authorization': 'Bearer ' + s.access_token } }
+      );
+      if (!presignRes.ok) throw new Error('failed to get upload url');
+      const { uploadUrl, fileUrl } = await presignRes.json();
+
+      fill.style.width = '30%';
+
+      // Step 2: upload directly to Uploadthing from the browser
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
       });
-      if (!res.ok) throw new Error('upload failed');
-      const { url } = await res.json();
-      fill.style.width = '100%';
-      clearInterval(tick);
+      if (!uploadRes.ok) throw new Error('upload to storage failed');
+
+      fill.style.width = '85%';
+
+      // Step 3: send file URL as a message
       const { data: { session: s2 } } = await db.auth.getSession();
       await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s2.access_token },
-        body: JSON.stringify({ roomId: currentRoomId, content: url }),
+        body: JSON.stringify({ roomId: currentRoomId, content: fileUrl }),
       });
+
+      fill.style.width = '100%';
     } catch (err) {
       console.error('Upload error:', err);
       label.textContent = '// upload failed';
     } finally {
-      clearInterval(tick);
       setTimeout(() => { bar.classList.remove('visible'); fill.style.width = '0%'; }, 800);
     }
   };

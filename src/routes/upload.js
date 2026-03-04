@@ -1,7 +1,5 @@
 const express = require('express');
-const { createUploadthing } = require('uploadthing/express');
-const { UTApi } = require('uploadthing/server');
-const multer  = require('multer');
+const { UTApi, UTFile } = require('uploadthing/server');
 const { requireAuth } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimit');
 const { supabaseAdmin } = require('../lib/supabase');
@@ -9,113 +7,66 @@ const { supabaseAdmin } = require('../lib/supabase');
 const utapi  = new UTApi();
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-});
-
 // ── Lazy cleanup ───────────────────────────────────────────────────────────
-// Runs before every upload — deletes files older than 24h OR if usage >= 1.8GB
 async function runCleanup() {
   try {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24h ago
-
-    // Fetch all file messages older than cutoff
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const { data: oldMessages } = await supabaseAdmin
       .from('messages')
       .select('id, content')
       .lt('timestamp', cutoff.toISOString())
-      .like('content', 'https://utfs.io/%'); // uploadthing URLs
+      .like('content', 'https://utfs.io/%');
 
     if (!oldMessages?.length) return;
 
-    // Extract uploadthing file keys from URLs
-    // UT URLs look like: https://utfs.io/f/FILEKEY
-    const toDelete = oldMessages
-      .map(m => {
-        try {
-          const url = new URL(m.content);
-          const key = url.pathname.split('/').pop();
-          return { msgId: m.id, key };
-        } catch { return null; }
-      })
-      .filter(Boolean);
+    const toDelete = oldMessages.map(m => {
+      try {
+        const key = new URL(m.content).pathname.split('/').pop();
+        return { msgId: m.id, key };
+      } catch { return null; }
+    }).filter(Boolean);
 
     if (!toDelete.length) return;
 
-    // Delete files from uploadthing
-    const keys = toDelete.map(f => f.key);
-    await utapi.deleteFiles(keys);
-    console.log('[cleanup] deleted', keys.length, 'files from uploadthing');
-
-    // Replace message content with expired notice
-    const msgIds = toDelete.map(f => f.msgId);
+    await utapi.deleteFiles(toDelete.map(f => f.key));
     await supabaseAdmin
       .from('messages')
       .update({ content: '// file expired' })
-      .in('id', msgIds);
+      .in('id', toDelete.map(f => f.msgId));
 
-    console.log('[cleanup] marked', msgIds.length, 'messages as expired');
+    console.log('[cleanup] expired', toDelete.length, 'files');
   } catch (err) {
     console.error('[cleanup] error:', err);
-    // Don't throw — cleanup failure shouldn't block uploads
   }
 }
 
-// ── Check storage usage ────────────────────────────────────────────────────
-// Returns true if we're too close to the 2GB limit
-async function isStorageFull() {
+// ── GET /upload/presign ────────────────────────────────────────────────────
+// Client calls this to get a presigned URL, then uploads directly to UT
+router.get('/presign', requireAuth, uploadLimiter, async (req, res) => {
   try {
-    // UTApi doesn't expose usage directly — count files as proxy
-    // If cleanup just ran and we still have too many files, reject
-    const { files } = await utapi.listFiles({ limit: 1 });
-    // Rough heuristic: fetch usage if available
-    // For now just let uploadthing reject naturally at 2GB
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// ── POST /upload/file ──────────────────────────────────────────────────────
-router.post('/file', uploadLimiter, requireAuth, (req, res, next) => {
-  upload.single('file')(req, res, err => {
-    if (err?.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: '// file too large — max 50MB' });
-    }
-    if (err) return next(err);
-    handleUpload(req, res);
-  });
-});
-
-async function handleUpload(req, res) {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'no file provided' });
-
-    // Run cleanup before accepting new upload — fire and await so we free space first
     await runCleanup();
 
-    // Upload to uploadthing
-    const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-    const file = new File([blob], req.file.originalname, { type: req.file.mimetype });
-
-    const response = await utapi.uploadFiles(file);
-
-    if (response.error) {
-      console.error('Uploadthing error:', response.error);
-      return res.status(500).json({ error: 'upload failed — ' + response.error.message });
+    const { filename, filetype } = req.query;
+    if (!filename || !filetype) {
+      return res.status(400).json({ error: 'missing filename or filetype' });
     }
 
-    res.json({
-      url:  response.data.url,
-      name: response.data.name,
-      size: response.data.size,
-    });
+    // Generate a presigned URL via UTApi
+    const presigned = await utapi.generatePresignedUrls([
+      { name: filename, type: filetype, size: 50 * 1024 * 1024 }
+    ]);
+
+    if (!presigned?.[0]) {
+      return res.status(500).json({ error: 'failed to generate presigned url' });
+    }
+
+    const { url, key, fileUrl } = presigned[0];
+    res.json({ uploadUrl: url, key, fileUrl });
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'upload failed' });
+    console.error('Presign error:', err);
+    res.status(500).json({ error: 'failed to generate upload url' });
   }
-}
+});
 
 // ── DELETE /upload/file ────────────────────────────────────────────────────
 router.delete('/file', requireAuth, async (req, res) => {
