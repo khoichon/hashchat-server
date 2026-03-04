@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>chat // invites</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #05080f; --glass: rgba(255,255,255,0.03); --glass-hover: rgba(255,255,255,0.055);
+      --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.13);
+      --text: rgba(255,255,255,0.88); --text-dim: rgba(255,255,255,0.35); --text-muted: rgba(255,255,255,0.12);
+      --accent: #ffffff; --error: #ff5555; --success: #55ffaa;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Geist', sans-serif; font-weight: 300; }
+    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(80,100,200,0.07) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(60,80,180,0.05) 0%, transparent 60%); pointer-events: none; z-index: 0; }
+    body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+    .page { position: relative; z-index: 1; max-width: 520px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2.5rem; }
+    .back-link { font-family: 'Geist Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+    .back-link:hover { color: var(--accent); }
+    .page-title { font-family: 'Geist Mono', monospace; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
+    .empty { font-family: 'Geist Mono', monospace; font-size: 0.7rem; color: var(--text-muted); letter-spacing: 0.1em; text-align: center; padding: 3rem 0; }
+    .invite-card { background: var(--glass); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.25rem; margin-bottom: 0.65rem; display: flex; align-items: center; gap: 1rem; transition: border-color 0.15s; }
+    .invite-card:hover { border-color: var(--border-hover); }
+    .invite-avatar { width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 0.6rem; font-weight: 500; color: #050810; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .invite-info { flex: 1; min-width: 0; }
+    .invite-from { font-size: 0.82rem; font-weight: 400; margin-bottom: 3px; }
+    .invite-from span { font-family: 'Geist Mono', monospace; font-size: 0.6rem; color: var(--text-muted); margin-left: 0.4rem; }
+    .invite-room { font-family: 'Geist Mono', monospace; font-size: 0.65rem; color: var(--text-dim); }
+    .invite-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+    .inv-btn { padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
+    .inv-btn.accept { background: rgba(85,255,170,0.1); color: var(--success); border-color: rgba(85,255,170,0.2); }
+    .inv-btn.accept:hover { background: rgba(85,255,170,0.18); }
+    .inv-btn.decline { background: none; color: var(--text-muted); }
+    .inv-btn.decline:hover { background: var(--glass-hover); color: var(--text-dim); border-color: var(--border-hover); }
+    .inv-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .loading { font-family: 'Geist Mono', monospace; font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.12em; text-align: center; padding: 3rem 0; }
+    @media (max-width: 600px) { .page { padding: 2rem 1rem 4rem; } .invite-card { flex-wrap: wrap; } .invite-actions { width: 100%; justify-content: flex-end; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page-header">
+      <a class="back-link" href="/app.html">← back</a>
+      <span class="page-title">// invites</span>
+    </div>
+    <div id="invite-list"><div class="loading">// loading</div></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="/config.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+  (async () => {
+    const session = await Auth.requireAuth();
+    if (!session) return;
+
+    const list = document.getElementById('invite-list');
+
+    async function loadInvites() {
+      const res = await fetch('/api/invites', {
+        headers: { 'Authorization': 'Bearer ' + session.access_token }
+      });
+      const { invites } = await res.json();
+
+      if (!invites?.length) {
+        list.innerHTML = '<div class="empty">// no pending invites</div>';
+        return;
+      }
+
+      list.innerHTML = '';
+      for (const inv of invites) {
+        list.appendChild(renderInvite(inv));
+      }
+    }
+
+    function renderInvite(inv) {
+      const from  = inv.from_user || {};
+      const room  = inv.rooms || {};
+      const color = from.color || '#4D96FF';
+      const initials = (from.name || '?').slice(0, 2).toUpperCase();
+      const roomLabel = room.is_dm ? 'direct message' : '# ' + room.name;
+
+      const card = document.createElement('div');
+      card.className = 'invite-card';
+      card.id = 'inv-' + inv.id;
+
+      const avatar = document.createElement('div');
+      avatar.className = 'invite-avatar';
+      avatar.style.background = color;
+      avatar.textContent = initials;
+
+      const info = document.createElement('div');
+      info.className = 'invite-info';
+
+      const fromEl = document.createElement('div');
+      fromEl.className = 'invite-from';
+      fromEl.textContent = from.name || 'unknown';
+      const hashSpan = document.createElement('span');
+      hashSpan.textContent = '#' + (from.hash || '?');
+      fromEl.appendChild(hashSpan);
+
+      const roomEl = document.createElement('div');
+      roomEl.className = 'invite-room';
+      roomEl.textContent = roomLabel;
+
+      info.appendChild(fromEl);
+      info.appendChild(roomEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'invite-actions';
+
+      const acceptBtn = document.createElement('button');
+      acceptBtn.className = 'inv-btn accept';
+      acceptBtn.textContent = 'accept';
+      acceptBtn.onclick = async () => {
+        acceptBtn.disabled = true;
+        declineBtn.disabled = true;
+        const res = await fetch('/api/invites/' + inv.id + '/accept', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + session.access_token }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          card.style.opacity = '0.4';
+          card.style.pointerEvents = 'none';
+          roomEl.textContent = '// joined! redirecting…';
+          setTimeout(() => window.location.href = '/app.html?room=' + data.roomId, 800);
+        }
+      };
+
+      const declineBtn = document.createElement('button');
+      declineBtn.className = 'inv-btn decline';
+      declineBtn.textContent = 'decline';
+      declineBtn.onclick = async () => {
+        acceptBtn.disabled = true;
+        declineBtn.disabled = true;
+        await fetch('/api/invites/' + inv.id + '/decline', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + session.access_token }
+        });
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+        if (!list.querySelector('.invite-card')) {
+          list.innerHTML = '<div class="empty">// no pending invites</div>';
+        }
+      };
+
+      actions.appendChild(acceptBtn);
+      actions.appendChild(declineBtn);
+      card.appendChild(avatar);
+      card.appendChild(info);
+      card.appendChild(actions);
+      return card;
+    }
+
+    await loadInvites();
+  })();
+  </script>
+</body>
+</html>
