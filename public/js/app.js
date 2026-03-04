@@ -244,6 +244,19 @@
 
   function renderContent(msg) {
     const wrapper = document.createElement('div');
+
+    // Expired file placeholder
+    if (msg.content === '// file expired') {
+      const expired = document.createElement('div');
+      expired.className = 'msg-text';
+      expired.style.color = 'var(--text-muted)';
+      expired.style.fontFamily = "'Geist Mono', monospace";
+      expired.style.fontSize = '0.72rem';
+      expired.textContent = '// file expired';
+      wrapper.appendChild(expired);
+      return wrapper;
+    }
+
     try {
       const url = new URL(msg.content);
       const ext = url.pathname.split('.').pop().toLowerCase();
