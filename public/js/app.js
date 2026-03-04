@@ -432,42 +432,68 @@
   document.getElementById('invite-btn').onclick = () => openModal('invite-modal');
   document.getElementById('invite-modal-cancel').onclick = () => closeModal('invite-modal');
   document.getElementById('invite-modal-add').onclick = async () => {
-    const raw = document.getElementById('invite-hash-input').value.trim().replace(/^#/, '');
+    const raw = document.getElementById('invite-hash-input').value.trim();
     const status = document.getElementById('invite-modal-status');
     if (!raw) { status.textContent = '// hash required'; return; }
-    const { data: user } = await db.from('users').select('id').eq('hash', raw).maybeSingle();
-    if (!user) { status.textContent = '// user not found'; return; }
-    const { error } = await db.from('room_members').upsert({ room_id: currentRoomId, user_id: user.id }, { onConflict: 'room_id,user_id' });
-    if (error) { status.textContent = '// ' + error.message; return; }
-    closeModal('invite-modal');
-    document.getElementById('invite-hash-input').value = '';
+    const btn = document.getElementById('invite-modal-add');
+    btn.disabled = true;
+    try {
+      const { data: { session: s } } = await db.auth.getSession();
+      const res = await fetch('/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
+        body: JSON.stringify({ toHash: raw, roomId: currentRoomId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { status.textContent = '// ' + data.error; return; }
+      status.textContent = '// invite sent!';
+      setTimeout(() => { closeModal('invite-modal'); document.getElementById('invite-hash-input').value = ''; }, 1000);
+    } catch (err) {
+      status.textContent = '// failed to send invite';
+    } finally {
+      btn.disabled = false;
+    }
   };
 
   document.getElementById('new-dm-btn').onclick = () => openModal('dm-modal');
   document.getElementById('dm-modal-cancel').onclick = () => closeModal('dm-modal');
   document.getElementById('dm-modal-open').onclick = async () => {
-    const raw = document.getElementById('dm-hash-input').value.trim().replace(/^#/, '');
+    const raw = document.getElementById('dm-hash-input').value.trim();
     const status = document.getElementById('dm-modal-status');
     if (!raw) { status.textContent = '// hash required'; return; }
-    if (raw === myProfile.hash) { status.textContent = '// that is you'; return; }
-    const { data: other } = await db.from('users').select('id,hash').eq('hash', raw).maybeSingle();
-    if (!other) { status.textContent = '// user not found'; return; }
-    const hashes = [myProfile.hash, other.hash].sort();
-    const roomName = 'dm:' + hashes[0] + ':' + hashes[1];
-    let { data: room } = await db.from('rooms').select('*').eq('name', roomName).maybeSingle();
-    if (!room) {
-      const { data: newRoom, error } = await db.from('rooms').insert({ name: roomName, is_dm: true }).select().single();
-      if (error) { status.textContent = '// ' + error.message; return; }
-      room = newRoom;
-      await db.from('room_members').insert([
-        { room_id: room.id, user_id: session.user.id },
-        { room_id: room.id, user_id: other.id },
-      ]);
+    const hash = raw.replace(/^#/, '');
+    if (hash === myProfile.hash) { status.textContent = '// that is you'; return; }
+    const btn = document.getElementById('dm-modal-open');
+    btn.disabled = true;
+    try {
+      const { data: { session: s } } = await db.auth.getSession();
+      // Check if DM room already exists
+      const hashes = [myProfile.hash, hash].sort();
+      const roomName = 'dm:' + hashes[0] + ':' + hashes[1];
+      const { data: existingRoom } = await db.from('rooms').select('id').eq('name', roomName).maybeSingle();
+      if (existingRoom) {
+        // Already have a DM with this person — just open it
+        closeModal('dm-modal');
+        document.getElementById('dm-hash-input').value = '';
+        await loadSidebar();
+        selectRoom(existingRoom.id);
+        return;
+      }
+      // Send a DM invite via server — server creates the room + adds sender, sends push to recipient
+      const res = await fetch('/api/invites/dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
+        body: JSON.stringify({ toHash: raw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { status.textContent = '// ' + data.error; return; }
+      status.textContent = '// invite sent — waiting for them to accept';
+      setTimeout(() => { closeModal('dm-modal'); document.getElementById('dm-hash-input').value = ''; }, 1500);
+    } catch (err) {
+      status.textContent = '// failed to send dm invite';
+    } finally {
+      btn.disabled = false;
     }
-    closeModal('dm-modal');
-    document.getElementById('dm-hash-input').value = '';
-    await loadSidebar();
-    selectRoom(room.id);
   };
 
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
