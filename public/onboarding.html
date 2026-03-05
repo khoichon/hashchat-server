@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>chat // setup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #05080f; --glass: rgba(255,255,255,0.03); --glass-hover: rgba(255,255,255,0.055);
+      --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.13);
+      --text: rgba(255,255,255,0.88); --text-dim: rgba(255,255,255,0.35); --text-muted: rgba(255,255,255,0.12);
+      --accent: #ffffff; --error: #ff5555; --success: #55ffaa;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Geist', sans-serif; font-weight: 300; }
+    body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(80,100,200,0.07) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%, rgba(60,80,180,0.05) 0%, transparent 60%); pointer-events: none; z-index: 0; }
+    body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+
+    .page { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+
+    /* progress */
+    .progress { display: flex; gap: 6px; margin-bottom: 2.5rem; }
+    .progress-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background 0.3s, transform 0.3s; }
+    .progress-dot.active { background: var(--accent); transform: scale(1.3); }
+    .progress-dot.done { background: var(--text-dim); }
+
+    /* card */
+    .card { width: 100%; max-width: 380px; background: var(--glass); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 24px 64px rgba(0,0,0,0.4); }
+
+    /* steps */
+    .step { display: none; flex-direction: column; gap: 1.1rem; animation: fadeUp 0.3s ease both; }
+    .step.active { display: flex; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    .step-label { font-family: 'Geist Mono', monospace; font-size: 0.57rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); }
+    .step-title { font-size: 1.2rem; font-weight: 400; line-height: 1.3; }
+    .step-desc { font-size: 0.78rem; line-height: 1.65; color: var(--text-dim); }
+
+    /* input */
+    .field-label { font-family: 'Geist Mono', monospace; font-size: 0.57rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); }
+    .field-input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: 'Geist', sans-serif; font-size: 0.82rem; font-weight: 300; padding: 0.65rem 0.9rem; outline: none; transition: border-color 0.15s, background 0.15s; width: 100%; }
+    .field-input:focus { border-color: var(--border-hover); background: rgba(255,255,255,0.06); }
+    .field-input::placeholder { color: var(--text-muted); }
+
+    /* color grid */
+    .color-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; }
+    .swatch { aspect-ratio: 1; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: all 0.15s; }
+    .swatch:hover { transform: scale(1.1); }
+    .swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(255,255,255,0.2); transform: scale(1.08); }
+
+    /* hash display */
+    .hash-display { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .hash-value { font-family: 'Geist Mono', monospace; font-size: 1rem; letter-spacing: 0.08em; color: var(--accent); }
+    .copy-btn { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--text-muted); font-family: 'Geist Mono', monospace; font-size: 0.55rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .copy-btn:hover { border-color: var(--border-hover); color: var(--text-dim); }
+    .copy-btn.copied { color: var(--success); border-color: rgba(85,255,170,0.3); }
+
+    /* avatar preview */
+    .avatar-preview { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', monospace; font-size: 0.75rem; font-weight: 500; color: #050810; box-shadow: 0 4px 16px rgba(0,0,0,0.4); transition: background 0.2s; flex-shrink: 0; }
+    .preview-row { display: flex; align-items: center; gap: 1rem; }
+    .preview-name { font-size: 0.88rem; font-weight: 400; }
+    .preview-hash { font-family: 'Geist Mono', monospace; font-size: 0.6rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* status */
+    .status { font-family: 'Geist Mono', monospace; font-size: 0.6rem; min-height: 1rem; }
+    .status.error { color: var(--error); }
+    .status.success { color: var(--success); }
+
+    /* button */
+    .next-btn { width: 100%; padding: 0.7rem; background: rgba(255,255,255,0.92); color: var(--bg); border: none; border-radius: 7px; font-family: 'Geist Mono', monospace; font-size: 0.63rem; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; transition: background 0.15s; margin-top: 0.25rem; }
+    .next-btn:hover { background: #fff; }
+    .next-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    @media (max-width: 480px) { .card { padding: 1.5rem; } }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="progress">
+    <div class="progress-dot active" id="dot-0"></div>
+    <div class="progress-dot" id="dot-1"></div>
+    <div class="progress-dot" id="dot-2"></div>
+  </div>
+
+  <div class="card">
+
+    <!-- Step 0: name + color -->
+    <div class="step active" id="step-0">
+      <div class="step-label">// step 1 of 3</div>
+      <div class="step-title">let's set you up.</div>
+      <div class="step-desc">choose a display name and a color. you can change these later in settings.</div>
+
+      <div style="display:flex;flex-direction:column;gap:0.35rem">
+        <div class="field-label">display name</div>
+        <input class="field-input" id="name-input" type="text" placeholder="e.g. madeline" maxlength="32" />
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:0.55rem">
+        <div class="field-label">color</div>
+        <div class="color-grid" id="color-grid"></div>
+      </div>
+
+      <div class="preview-row">
+        <div class="avatar-preview" id="avatar-preview">?</div>
+        <div>
+          <div class="preview-name" id="preview-name">—</div>
+          <div class="preview-hash" id="preview-hash-small">#—</div>
+        </div>
+      </div>
+
+      <div class="status" id="step0-status"></div>
+      <button class="next-btn" id="step0-btn" onclick="saveProfile()">// continue</button>
+    </div>
+
+    <!-- Step 1: hash explainer -->
+    <div class="step" id="step-1">
+      <div class="step-label">// step 2 of 3</div>
+      <div class="step-title">your hash.</div>
+      <div class="step-desc">
+        every user on chat has a unique <span style="font-family:'Geist Mono',monospace;color:var(--accent)">#hash</span> —
+        a short random identifier that makes you findable without exposing your email.
+        share it with friends so they can DM you or add you to rooms.
+      </div>
+      <div class="hash-display">
+        <span class="hash-value" id="hash-display">#—</span>
+        <button class="copy-btn" id="copy-btn" onclick="copyHash()">copy</button>
+      </div>
+      <div class="step-desc" style="font-family:'Geist Mono',monospace;font-size:0.68rem;color:var(--text-muted)">
+        // your hash never changes. keep it safe.
+      </div>
+      <button class="next-btn" onclick="goStep(2)">// got it</button>
+    </div>
+
+    <!-- Step 2: all set -->
+    <div class="step" id="step-2">
+      <div class="step-label">// step 3 of 3</div>
+      <div class="step-title">you're all set.</div>
+      <div class="step-desc">
+        next up — a quick tour of the app. we'll show you around so you know where everything is.
+        takes about 30 seconds.
+      </div>
+      <div class="step-desc" style="font-family:'Geist Mono',monospace;font-size:0.68rem;color:var(--text-muted)">
+        // press continue to start the tour, or skip to go straight to chat.
+      </div>
+      <button class="next-btn" onclick="startTour()">// start tour</button>
+      <button onclick="skipTour()" style="background:none;border:none;color:var(--text-muted);font-family:'Geist Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;cursor:pointer;text-align:center;padding:0.25rem;transition:color 0.15s" onmouseover="this.style.color='var(--text-dim)'" onmouseout="this.style.color='var(--text-muted)'">// skip tour</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
+<script src="/js/auth.js"></script>
+<script>
+const COLORS = ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#FF6BFF','#FF9F43','#00D2D3','#A29BFE','#fd79a8','#55efc4','#fdcb6e','#74b9ff'];
+let selectedColor = COLORS[3];
+let myHash = null;
+let currentStep = 0;
+
+(async () => {
+  const session = await Auth.requireAuth();
+  if (!session) return;
+
+  // Load existing profile (hash is generated by DB trigger on signup)
+  const { data: profile } = await db.from('users').select('*').eq('id', session.user.id).maybeSingle();
+  if (profile) {
+    myHash = profile.hash;
+    document.getElementById('hash-display').textContent = '#' + profile.hash;
+    document.getElementById('preview-hash-small').textContent = '#' + profile.hash;
+    if (profile.name) document.getElementById('name-input').value = profile.name;
+    if (profile.color) { selectedColor = profile.color; }
+    if (profile.onboarded) {
+      // Already onboarded — skip to app unless dev triggered this
+      const devTriggered = sessionStorage.getItem('dev-onboarding');
+      if (!devTriggered) { window.location.href = '/app.html'; return; }
+      sessionStorage.removeItem('dev-onboarding');
+    }
+  }
+
+  renderColors();
+  updatePreview();
+})();
+
+function renderColors() {
+  const grid = document.getElementById('color-grid');
+  grid.innerHTML = '';
+  for (const color of COLORS) {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (color === selectedColor ? ' selected' : '');
+    sw.style.background = color;
+    sw.onclick = () => { selectedColor = color; renderColors(); updatePreview(); };
+    grid.appendChild(sw);
+  }
+}
+
+function updatePreview() {
+  const name = document.getElementById('name-input').value.trim() || '?';
+  const initials = name.slice(0, 2).toUpperCase();
+  document.getElementById('avatar-preview').textContent = initials;
+  document.getElementById('avatar-preview').style.background = selectedColor;
+  document.getElementById('preview-name').textContent = name;
+}
+
+document.getElementById('name-input').addEventListener('input', updatePreview);
+
+async function saveProfile() {
+  const name = document.getElementById('name-input').value.trim();
+  const status = document.getElementById('step0-status');
+  const btn = document.getElementById('step0-btn');
+  if (!name) { status.textContent = '// name required'; status.className = 'status error'; return; }
+
+  btn.disabled = true;
+  const { error } = await db.from('users').update({ name, color: selectedColor }).eq('id', (await db.auth.getSession()).data.session.user.id);
+  if (error) { status.textContent = '// ' + error.message; status.className = 'status error'; btn.disabled = false; return; }
+  goStep(1);
+}
+
+function goStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  document.getElementById('dot-' + currentStep).classList.remove('active');
+  document.getElementById('dot-' + currentStep).classList.add('done');
+  currentStep = n;
+  document.getElementById('step-' + n).classList.add('active');
+  document.getElementById('dot-' + n).classList.add('active');
+}
+
+function copyHash() {
+  navigator.clipboard.writeText('#' + myHash);
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = 'copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 2000);
+}
+
+async function markOnboarded() {
+  const { data: { session } } = await db.auth.getSession();
+  await db.from('users').update({ onboarded: true }).eq('id', session.user.id);
+}
+
+async function startTour() {
+  await markOnboarded();
+  window.location.href = '/app.html?tour=1';
+}
+
+async function skipTour() {
+  await markOnboarded();
+  window.location.href = '/app.html';
+}
+</script>
+</body>
+</html>

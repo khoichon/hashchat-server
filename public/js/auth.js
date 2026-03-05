@@ -1,4 +1,4 @@
-// Auth helpers — login, signup, session guard
+// Auth helpers
 const Auth = (() => {
   async function login(email, password) {
     const { data, error } = await db.auth.signInWithPassword({ email, password });
@@ -17,17 +17,23 @@ const Auth = (() => {
     window.location.href = '/index.html';
   }
 
-  // Redirect to login if no session — call at top of protected pages
+  // Redirect to login if no session — also checks onboarding status
   async function requireAuth() {
     const { data: { session } } = await db.auth.getSession();
-    if (!session) {
-      window.location.href = '/index.html';
-      return null;
+    if (!session) { window.location.href = '/index.html'; return null; }
+
+    // Check onboarded — skip check if already on onboarding page
+    if (!window.location.pathname.includes('onboarding')) {
+      const { data: profile } = await db.from('users').select('onboarded').eq('id', session.user.id).maybeSingle();
+      if (profile && !profile.onboarded) {
+        window.location.href = '/onboarding.html';
+        return null;
+      }
     }
+
     return session;
   }
 
-  // Redirect to app if already logged in — call on login page
   async function redirectIfAuthed() {
     const { data: { session } } = await db.auth.getSession();
     if (session) window.location.href = '/app.html';

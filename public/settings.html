@@ -130,6 +130,29 @@
         </div>
       </div>
     </div>
+
+    <div class="section" id="dev-section" style="display:none;border-color:rgba(100,100,255,0.2)">
+      <div class="section-title" style="color:rgba(100,100,255,0.6)">// developer mode</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">developer mode</div>
+          <div class="setting-desc">enables debug tools and event triggers</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="dev-toggle" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div id="dev-panel" style="display:none">
+        <div class="setting-body" style="border-top:1px solid var(--border)">
+          <div class="setting-label" style="font-family:'Geist Mono',monospace;font-size:0.57rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.25rem">// trigger events</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
+            <button class="s-btn ghost" onclick="triggerOnboarding()">first-login</button>
+          </div>
+          <div class="s-status" style="font-family:'Geist Mono',monospace;font-size:0.58rem;color:var(--text-muted)">// triggers redirect to onboarding flow</div>
+        </div>
+      </div>
+    </div>
     <div class="section danger-zone">
       <div class="section-title">// danger zone</div>
       <div class="setting-row">
@@ -141,10 +164,8 @@
       </div>
     </div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="/config.js"></script>
-  <script src="/js/auth.js"></script>
-  <script src="/js/notifications.js"></script>
   <script src="/js/settings.js"></script>
 </body>
 </html>
