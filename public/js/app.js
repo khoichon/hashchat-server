@@ -135,6 +135,7 @@
     currentRoomName = room.name;
     currentRoomIsDM = room.is_dm;
     document.getElementById('chat-header-name').textContent = room.is_dm ? dmDisplayName(room.name) : room.name;
+    document.getElementById('sidebar-toggle-btn').style.display = '';
     document.getElementById('chat-header-desc').textContent = room.description || '';
     document.getElementById('invite-btn').style.display = room.is_dm ? 'none' : '';
     await loadMessages(roomId);
@@ -178,6 +179,19 @@
   }
 
   function appendMessage(wrap, msg, collapsed) {
+    // System messages render differently
+    if (msg.is_system) {
+      const el = document.createElement('div');
+      el.className = 'msg system';
+      const text = document.createElement('div');
+      text.className = 'msg-text';
+      text.textContent = msg.content;
+      el.appendChild(text);
+      wrap.appendChild(el);
+      return;
+    }
+
+
     const user     = msg.users || {};
     const initials = (user.name || '?').slice(0, 2).toUpperCase();
     const color    = user.color || '#4D96FF';
@@ -320,7 +334,7 @@
         const lastMsg = wrap.querySelector('.msg:last-child');
         appendMessage(wrap, msg, lastMsg?.dataset?.userId === msg.user_id);
         scrollToBottom();
-        if (msg.user_id !== session.user.id) {
+        if (msg.user_id !== session.user.id && !isMuted) {
           Notifications.notify({
             senderName:  user?.name || 'someone',
             senderHash:  '#' + (user?.hash || '?'),
@@ -376,15 +390,7 @@
   document.getElementById('reply-cancel').onclick = clearReply;
 
   // File upload
-  document.getElementById('attach-btn').onclick = () => {
-    Notifications.showToast({
-      senderName: 'system',
-      senderColor: 'var(--text-muted)',
-      content: 'file uploads temporarily unavailable',
-      roomName: 'system',
-      isDM: false,
-    });
-  };
+  document.getElementById('attach-btn').onclick = () => document.getElementById('file-input').click();
   document.getElementById('file-input').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file || !currentRoomId) return;
@@ -533,6 +539,16 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('visible'); };
   });
 
+  // Right sidebar
+  document.getElementById('sidebar-toggle-btn').onclick = () => {
+    const sb = document.getElementById('right-sidebar');
+    const isOpen = sb.classList.toggle('open');
+    if (isOpen && currentRoomId) loadRightSidebar();
+  };
+  document.getElementById('rs-close-btn').onclick = () => {
+    document.getElementById('right-sidebar').classList.remove('open');
+  };
+
   document.getElementById('signout-btn').onclick = () => Auth.signout();
   document.getElementById('settings-btn').onclick = () => window.location.href = '/settings.html';
 
@@ -557,6 +573,209 @@
     document.getElementById('main').classList.remove('visible');
   };
   document.getElementById('back-btn').onclick = window.showSidebar;
+
+  // ── Right sidebar ─────────────────────────────────────────────────────────
+  let myRole = 'member';
+  let isMuted = false;
+
+  async function loadRightSidebar() {
+    const body = document.getElementById('rs-body');
+    body.innerHTML = '<div style="font-family:Geist Mono,monospace;font-size:0.65rem;color:var(--text-muted);padding:1rem 0">// loading…</div>';
+
+    const { data: { session: s } } = await db.auth.getSession();
+
+    // Fetch members
+    const res = await fetch('/api/rooms/' + currentRoomId + '/members', {
+      headers: { 'Authorization': 'Bearer ' + s.access_token }
+    });
+    const { members } = await res.json();
+
+    // Get my role
+    const me = members?.find(m => m.users?.id === session.user.id);
+    myRole = me?.role || 'member';
+
+    // Check mute status
+    const { data: mute } = await db.from('muted_chats')
+      .select('room_id').eq('user_id', session.user.id).eq('room_id', currentRoomId).maybeSingle();
+    isMuted = !!mute;
+
+    body.innerHTML = '';
+
+    // ── Description section ──
+    const { data: room } = await db.from('rooms').select('name,description,is_dm').eq('id', currentRoomId).maybeSingle();
+
+    if (!currentRoomIsDM) {
+      const descSection = document.createElement('div');
+      const descLabel = document.createElement('div');
+      descLabel.className = 'rs-section-label';
+      descLabel.textContent = '// description';
+      descSection.appendChild(descLabel);
+
+      if (['owner','admin'].includes(myRole)) {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'rs-desc-input';
+        textarea.rows = 3;
+        textarea.value = room?.description || '';
+        textarea.placeholder = 'add a description…';
+        descSection.appendChild(textarea);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'rs-save-btn';
+        saveBtn.textContent = '// save';
+        saveBtn.onclick = async () => {
+          const { data: { session: s2 } } = await db.auth.getSession();
+          const r = await fetch('/api/rooms/' + currentRoomId + '/description', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s2.access_token },
+            body: JSON.stringify({ description: textarea.value.trim() }),
+          });
+          if (r.ok) {
+            document.getElementById('chat-header-desc').textContent = textarea.value.trim();
+            saveBtn.textContent = '// saved!';
+            setTimeout(() => { saveBtn.textContent = '// save'; }, 1500);
+          }
+        };
+        descSection.appendChild(saveBtn);
+      } else {
+        const desc = document.createElement('div');
+        desc.className = 'rs-desc';
+        desc.textContent = room?.description || '// no description';
+        descSection.appendChild(desc);
+      }
+      body.appendChild(descSection);
+      body.appendChild(Object.assign(document.createElement('hr'), { className: 'rs-divider' }));
+    }
+
+    // ── Members section ──
+    if (!currentRoomIsDM) {
+      const membersSection = document.createElement('div');
+      const membersLabel = document.createElement('div');
+      membersLabel.className = 'rs-section-label';
+      membersLabel.textContent = '// members (' + (members?.length || 0) + ')';
+      membersSection.appendChild(membersLabel);
+
+      for (const m of (members || [])) {
+        const user = m.users || {};
+        const isMe = user.id === session.user.id;
+
+        const row = document.createElement('div');
+        row.className = 'rs-member';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'rs-member-avatar';
+        avatar.style.background = user.color || '#4D96FF';
+        avatar.textContent = (user.name || '?').slice(0, 2).toUpperCase();
+        avatar.style.color = '#050810';
+
+        const info = document.createElement('div');
+        info.className = 'rs-member-info';
+        const name = document.createElement('div');
+        name.className = 'rs-member-name';
+        name.textContent = user.name || 'anon';
+        const hash = document.createElement('div');
+        hash.className = 'rs-member-hash';
+        hash.textContent = '#' + (user.hash || '?');
+        info.appendChild(name);
+        info.appendChild(hash);
+
+        row.appendChild(avatar);
+        row.appendChild(info);
+
+        // Role badge
+        if (m.role === 'owner' || m.role === 'admin') {
+          const badge = document.createElement('span');
+          badge.className = 'rs-role-badge ' + m.role;
+          badge.textContent = m.role === 'owner' ? '👑 owner' : '⚡ admin';
+          row.appendChild(badge);
+        }
+
+        // Admin actions (not on self, not on owner unless I'm owner)
+        if (!isMe && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'))) {
+          const actions = document.createElement('div');
+          actions.className = 'rs-member-actions';
+
+          if (myRole === 'owner') {
+            const promoteBtn = document.createElement('button');
+            promoteBtn.className = 'rs-member-btn';
+            promoteBtn.textContent = m.role === 'admin' ? 'demote' : 'admin';
+            promoteBtn.onclick = async () => {
+              const { data: { session: s2 } } = await db.auth.getSession();
+              const endpoint = m.role === 'admin' ? 'demote' : 'promote';
+              await fetch('/api/rooms/' + currentRoomId + '/' + endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s2.access_token },
+                body: JSON.stringify({ userId: user.id }),
+              });
+              loadRightSidebar();
+            };
+            actions.appendChild(promoteBtn);
+          }
+
+          const kickBtn = document.createElement('button');
+          kickBtn.className = 'rs-member-btn danger';
+          kickBtn.textContent = 'kick';
+          kickBtn.onclick = async () => {
+            if (!confirm('kick ' + (user.name || 'this user') + '?')) return;
+            const { data: { session: s2 } } = await db.auth.getSession();
+            await fetch('/api/rooms/' + currentRoomId + '/kick', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s2.access_token },
+              body: JSON.stringify({ userId: user.id }),
+            });
+            loadRightSidebar();
+          };
+          actions.appendChild(kickBtn);
+          row.appendChild(actions);
+        }
+
+        membersSection.appendChild(row);
+      }
+      body.appendChild(membersSection);
+      body.appendChild(Object.assign(document.createElement('hr'), { className: 'rs-divider' }));
+    }
+
+    // ── Mute toggle ──
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'rs-action-btn mute';
+    muteBtn.textContent = isMuted ? '// unmute notifications' : '// mute notifications';
+    muteBtn.onclick = async () => {
+      if (isMuted) {
+        await db.from('muted_chats').delete().eq('user_id', session.user.id).eq('room_id', currentRoomId);
+        isMuted = false;
+        muteBtn.textContent = '// mute notifications';
+      } else {
+        await db.from('muted_chats').insert({ user_id: session.user.id, room_id: currentRoomId });
+        isMuted = true;
+        muteBtn.textContent = '// unmute notifications';
+      }
+    };
+    body.appendChild(muteBtn);
+
+    // ── Leave / delete ──
+    if (!currentRoomIsDM) {
+      const leaveBtn = document.createElement('button');
+      leaveBtn.className = 'rs-action-btn leave';
+      leaveBtn.textContent = myRole === 'owner' ? '// delete room' : '// leave room';
+      leaveBtn.onclick = async () => {
+        const action = myRole === 'owner' ? 'delete' : 'leave';
+        if (!confirm('// ' + action + ' this room? this cannot be undone.')) return;
+        const { data: { session: s2 } } = await db.auth.getSession();
+        const r = await fetch('/api/rooms/' + currentRoomId + '/leave', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + s2.access_token },
+        });
+        const data = await r.json();
+        if (data.ok) {
+          document.getElementById('right-sidebar').classList.remove('open');
+          document.getElementById('chat-view').style.display = 'none';
+          document.getElementById('no-room').style.display = '';
+          currentRoomId = null;
+          await loadSidebar();
+        }
+      };
+      body.appendChild(leaveBtn);
+    }
+  }
 
   function hideLoading() {
     const el = document.getElementById('loading');
