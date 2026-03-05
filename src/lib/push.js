@@ -26,15 +26,27 @@ async function _sendToSubs(subs, payload) {
   }
 }
 
-// Send push to all members of a room except one user
+// Send push to all members of a room except one user, respecting muted_chats
 async function sendPushToRoomMembers({ roomId, excludeUserId, payload }) {
   const { data: members } = await supabaseAdmin
     .from('room_members').select('user_id')
     .eq('room_id', roomId).is('left_at', null).neq('user_id', excludeUserId);
   if (!members?.length) return;
+
+  const memberIds = members.map(m => m.user_id);
+
+  // Fetch users who have muted this room
+  const { data: muted } = await supabaseAdmin
+    .from('muted_chats').select('user_id')
+    .eq('room_id', roomId).in('user_id', memberIds);
+
+  const mutedIds = new Set((muted || []).map(m => m.user_id));
+  const activeIds = memberIds.filter(id => !mutedIds.has(id));
+  if (!activeIds.length) return;
+
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions').select('endpoint,p256dh,auth')
-    .in('user_id', members.map(m => m.user_id));
+    .in('user_id', activeIds);
   if (!subs?.length) return;
   await _sendToSubs(subs, payload);
 }
