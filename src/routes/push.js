@@ -58,4 +58,17 @@ router.delete("/subscribe", requireAuth, async (req, res) => {
   }
 });
 
+
+// GET /api/push/catchup — called by SW on activate to flush undelivered
+router.get('/catchup', requireAuth, async (req, res) => {
+  try {
+    const { sendCatchupNotification } = require('../lib/push');
+    await sendCatchupNotification(req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Catchup error:', err);
+    res.status(500).json({ error: 'catchup failed' });
+  }
+});
+
 module.exports = router;

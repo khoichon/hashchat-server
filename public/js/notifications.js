@@ -147,3 +147,15 @@ const Notifications = (() => {
 
   return { init, requestPermission, unsubscribe, notify, showToast, clearBadge, incrementBadge };
 })();
+
+
+  // Respond to SW asking for auth token (for catchup on activate)
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', async e => {
+      if (e.data?.type === 'GET_TOKEN') {
+        const { data: { session } } = await window.db.auth.getSession();
+        e.ports[0].postMessage({ token: session?.access_token || null });
+      }
+    });
+  }
+
