@@ -97,7 +97,7 @@
     for (const room of dms) {
       const parts = room.name.split(':');
       const otherHash = parts[1] === myProfile.hash ? parts[2] : parts[1];
-      const { data: other } = await db.from('users').select('name,color').eq('hash', otherHash).maybeSingle();
+      const { data: other } = await db.from('users').select('name,color,is_official').eq('hash', otherHash).maybeSingle();
       const item = document.createElement('div');
       item.className = 'room-item';
       item.dataset.id = room.id;
@@ -108,6 +108,17 @@
       dot.style.opacity = '1';
       const name = document.createElement('span');
       name.textContent = other?.name || otherHash;
+      if (other?.is_official) {
+        const badge = document.createElement('span');
+        badge.className = 'official-badge';
+        badge.textContent = '✦ official';
+        item.appendChild(dot);
+        item.appendChild(name);
+        item.appendChild(badge);
+        item.onclick = () => selectRoom(room.id);
+        el.appendChild(item);
+        continue;
+      }
       item.appendChild(dot);
       item.appendChild(name);
       item.onclick = () => selectRoom(room.id);
@@ -157,7 +168,7 @@
     wrap.appendChild(empty);
 
     const { data: msgs } = await db.from('messages')
-      .select('*, users(name, hash, color)')
+      .select('*, users(name, hash, color, is_official)')
       .eq('room_id', roomId)
       .order('timestamp', { ascending: true })
       .limit(100);
@@ -195,6 +206,7 @@
     const user     = msg.users || {};
     const initials = (user.name || '?').slice(0, 2).toUpperCase();
     const color    = user.color || '#4D96FF';
+    const isOfficial = user.is_official || false;
     const time     = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const el = document.createElement('div');
@@ -222,12 +234,23 @@
     const hashEl = document.createElement('span');
     hashEl.className = 'msg-hash-tag';
     hashEl.textContent = '#' + (user.hash || '?');
+    if (isOfficial) {
+      const offBadge = document.createElement('span');
+      offBadge.className = 'official-badge';
+      offBadge.textContent = '✦ official';
+      meta.appendChild(nameEl);
+      meta.appendChild(hashEl);
+      meta.appendChild(offBadge);
+      meta.appendChild(timeEl);
+    } else {
     const timeEl = document.createElement('span');
     timeEl.className = 'msg-time';
     timeEl.textContent = time;
-    meta.appendChild(nameEl);
-    meta.appendChild(hashEl);
-    meta.appendChild(timeEl);
+    if (!isOfficial) {
+      meta.appendChild(nameEl);
+      meta.appendChild(hashEl);
+      meta.appendChild(timeEl);
+    }
     body.appendChild(meta);
 
     // Reply
@@ -328,7 +351,7 @@
         filter: 'room_id=eq.' + roomId,
       }, async payload => {
         const msg = payload.new;
-        const { data: user } = await db.from('users').select('name,hash,color').eq('id', msg.user_id).maybeSingle();
+        const { data: user } = await db.from('users').select('name,hash,color,is_official').eq('id', msg.user_id).maybeSingle();
         msg.users = user;
         const wrap = document.getElementById('messages');
         const lastMsg = wrap.querySelector('.msg:last-child');
