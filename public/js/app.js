@@ -234,23 +234,18 @@
     const hashEl = document.createElement('span');
     hashEl.className = 'msg-hash-tag';
     hashEl.textContent = '#' + (user.hash || '?');
+    const timeEl = document.createElement('span');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = time;
+    meta.appendChild(nameEl);
+    meta.appendChild(hashEl);
     if (isOfficial) {
       const offBadge = document.createElement('span');
       offBadge.className = 'official-badge';
       offBadge.textContent = '✦ official';
-      meta.appendChild(nameEl);
-      meta.appendChild(hashEl);
       meta.appendChild(offBadge);
-      meta.appendChild(timeEl);
-    } else {
-    const timeEl = document.createElement('span');
-    timeEl.className = 'msg-time';
-    timeEl.textContent = time;
-    if (!isOfficial) {
-      meta.appendChild(nameEl);
-      meta.appendChild(hashEl);
-      meta.appendChild(timeEl);
     }
+    meta.appendChild(timeEl);
     body.appendChild(meta);
 
     // Reply
