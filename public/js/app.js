@@ -14,6 +14,14 @@
   const GENERAL_ID = '00000000-0000-0000-0000-000000000001';
 
   await Notifications.init();
+
+  // Catch up on missed messages from when app was closed
+  try {
+    const { data: { session: cs } } = await db.auth.getSession();
+    if (cs) fetch('/api/push/catchup', {
+      headers: { 'Authorization': 'Bearer ' + cs.access_token }
+    }).catch(() => {});
+  } catch {}
   await loadProfile();
   await ensureGeneralMembership();
   await loadSidebar();

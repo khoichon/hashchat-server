@@ -1,37 +1,22 @@
 const CACHE_NAME = 'hashchat-sw-v1';
 
-// On activate — signal server to send catchup notification
+// Keep SW alive — browser kills SWs with no fetch handler
+self.addEventListener('fetch', event => {
+  // passthrough — we just need this handler to exist
+});
+
+// Force immediate activation when updated
+self.addEventListener('message', e => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// Claim all clients immediately on activate
 self.addEventListener('activate', event => {
   event.waitUntil(
-    (async () => {
-      // Get auth token from clients
-      const clients = await self.clients.matchAll({ type: 'window' });
-      let token = null;
-
-      for (const client of clients) {
-        // Ask the client for its auth token
-        const tokenPromise = new Promise(resolve => {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = e => resolve(e.data?.token || null);
-          client.postMessage({ type: 'GET_TOKEN' }, [channel.port2]);
-        });
-        token = await Promise.race([
-          tokenPromise,
-          new Promise(r => setTimeout(() => r(null), 500)),
-        ]);
-        if (token) break;
-      }
-
-      if (token) {
-        try {
-          await fetch('/api/push/catchup', {
-            headers: { 'Authorization': 'Bearer ' + token },
-          });
-        } catch (e) {
-          console.warn('[SW] catchup failed:', e);
-        }
-      }
-    })()
+    Promise.all([
+      self.clients.claim(),
+      self.registration.navigationPreload?.enable(),
+    ])
   );
 });
 
