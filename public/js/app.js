@@ -586,7 +586,13 @@
   document.getElementById('msg-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.sendMessage(); }
   });
-  document.getElementById('msg-input').addEventListener('input', function() { autoResize(this); });
+  document.getElementById('msg-input').addEventListener('input', function() {
+  autoResize(this);
+  const count = this.value.length;
+  const counter = document.getElementById('char-counter');
+  counter.textContent = count + ' / 1000';
+  counter.style.color = count > 900 ? 'var(--error)' : 'var(--text-muted)';
+});
 
   function showMain() {
     if (window.innerWidth <= 600) {
