@@ -15,7 +15,9 @@ router.post("/", messageLimiter, requireAuth, async (req, res) => {
     if (!roomId || !content?.trim()) {
       return res.status(400).json({ error: "Missing roomId or content" });
       if (!content || typeof content !== 'string') return res.status(400).json({ error: 'missing content' });
-      if (content.length > 1000) return res.status(400).json({ error: 'message too long — max 1000 chars' });
+      if (content.length > 200) return res.status(400).json({ error: 'message too long — max 200 chars' });
+      const lines = content.split('\n').length;
+      if (lines > 10) return res.status(400).json({ error: 'too many lines — max 10' });
     }
 
     const userId = req.user.id;
