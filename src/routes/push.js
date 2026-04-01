@@ -1,7 +1,6 @@
 const express = require("express");
 const { requireAuth } = require("../middleware/auth");
 const { supabaseAdmin } = require("../lib/supabase");
-const { catchupLimiter } = require("../middleware/rateLimit");
 
 const router = express.Router();
 
@@ -55,7 +54,16 @@ router.delete("/subscribe", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/catchup", catchupLimiter, requireAuth, async (req, res) => {
+// User-keyed catchup limiter — applied after auth so we key by user ID not IP
+const { rateLimit } = require('express-rate-limit');
+const userCatchupLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 1,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'catchup already requested — try again in a minute' },
+});
+
+router.get("/catchup", requireAuth, userCatchupLimiter, async (req, res) => {
   try {
     const { sendCatchupNotification } = require("../lib/push");
     await sendCatchupNotification(req.user.id);

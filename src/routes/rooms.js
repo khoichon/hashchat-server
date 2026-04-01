@@ -9,10 +9,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function validUUID(id) { return id && UUID_RE.test(id); }
 
-async function getMember(roomId, userId) {
-  const { data } = await supabaseAdmin
+async function getMember(roomId, userId, requireActive = true) {
+  const query = supabaseAdmin
     .from('room_members').select('role,left_at')
-    .eq('room_id', roomId).eq('user_id', userId).maybeSingle();
+    .eq('room_id', roomId).eq('user_id', userId);
+  if (requireActive) query.is('left_at', null);
+  const { data } = await query.maybeSingle();
   return data;
 }
 
