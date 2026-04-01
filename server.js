@@ -15,8 +15,23 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*', methods: ['GET','POST','PATCH','DELETE'] }));
-app.use(express.json());
+
+// Lock CORS to your domain in production
+const allowedOrigins = process.env.CLIENT_ORIGIN
+  ? process.env.CLIENT_ORIGIN.split(',').map(s => s.trim())
+  : ['http://localhost:3000'];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow same-origin requests (no origin header) and allowed origins
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('not allowed by CORS'));
+  },
+  methods: ['GET','POST','PATCH','DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '50kb' })); // prevent giant request bodies
 app.use(globalLimiter);
 app.use(express.static(path.join(__dirname, 'public')));
 

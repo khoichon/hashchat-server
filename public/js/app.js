@@ -390,10 +390,25 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
         body: JSON.stringify({ roomId: currentRoomId, content, replyId: replyToMsg?.id || null }),
       });
+      if (res.status === 429) {
+        const data = await res.json();
+        showInputError(data.error || 'slow down!');
+        input.value = content; // restore message
+        autoResize(input);
+        return;
+      }
+      if (res.status === 400) {
+        const data = await res.json();
+        showInputError(data.error || 'invalid message');
+        input.value = content;
+        autoResize(input);
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       clearReply();
     } catch (err) {
       console.error('Send failed:', err);
+      showInputError('// failed to send');
     } finally {
       btn.disabled = false;
       input.focus();
@@ -590,8 +605,8 @@
   autoResize(this);
   const count = this.value.length;
   const counter = document.getElementById('char-counter');
-  counter.textContent = count + ' / 200';
-  counter.style.color = count > 150 ? 'var(--error)' : 'var(--text-muted)';
+  counter.textContent = count + ' / 1000';
+  counter.style.color = count > 900 ? 'var(--error)' : 'var(--text-muted)';
 });
 
   function showMain() {
@@ -807,6 +822,18 @@
       };
       body.appendChild(leaveBtn);
     }
+  }
+
+  function showInputError(msg) {
+    const counter = document.getElementById('char-counter');
+    const prev = counter.textContent;
+    const prevColor = counter.style.color;
+    counter.textContent = '// ' + msg;
+    counter.style.color = 'var(--error)';
+    setTimeout(() => {
+      counter.textContent = prev;
+      counter.style.color = prevColor;
+    }, 3000);
   }
 
   function hideLoading() {

@@ -6,18 +6,32 @@ const { messageLimiter } = require("../middleware/rateLimit");
 
 const router = express.Router();
 
-// POST /api/messages
-// Body: { roomId, content, replyId? }
-// Saves message then fires web push to all room members (except sender)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.post("/", messageLimiter, requireAuth, async (req, res) => {
   try {
     const { roomId, content, replyId } = req.body;
-    if (!roomId || !content?.trim()) {
-      return res.status(400).json({ error: "Missing roomId or content" });
-      if (!content || typeof content !== 'string') return res.status(400).json({ error: 'missing content' });
-      if (content.length > 200) return res.status(400).json({ error: 'message too long — max 200 chars' });
-      const lines = content.split('\n').length;
-      if (lines > 10) return res.status(400).json({ error: 'too many lines — max 10' });
+
+    // Input validation — all checks BEFORE the early return
+    if (!roomId || !UUID_RE.test(roomId)) {
+      return res.status(400).json({ error: "invalid roomId" });
+    }
+    if (!content || typeof content !== "string") {
+      return res.status(400).json({ error: "missing content" });
+    }
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: "message is empty" });
+    }
+    if (trimmed.length > 1000) {
+      return res.status(400).json({ error: "message too long — max 1000 chars", code: "TOO_LONG" });
+    }
+    const lines = trimmed.split("\n").length;
+    if (lines > 10) {
+      return res.status(400).json({ error: "too many lines — max 10", code: "TOO_MANY_LINES" });
+    }
+    if (replyId && !UUID_RE.test(replyId)) {
+      return res.status(400).json({ error: "invalid replyId" });
     }
 
     const userId = req.user.id;
@@ -32,7 +46,7 @@ router.post("/", messageLimiter, requireAuth, async (req, res) => {
       .maybeSingle();
 
     if (!membership) {
-      return res.status(403).json({ error: "Not a member of this room" });
+      return res.status(403).json({ error: "not a member of this room" });
     }
 
     // Insert message
@@ -41,7 +55,7 @@ router.post("/", messageLimiter, requireAuth, async (req, res) => {
       .insert({
         room_id: roomId,
         user_id: userId,
-        content: content.trim(),
+        content: trimmed,
         reply_id: replyId || null,
       })
       .select()
@@ -49,31 +63,23 @@ router.post("/", messageLimiter, requireAuth, async (req, res) => {
 
     if (insertError) throw insertError;
 
-    // Fetch sender profile for notification payload
-    const { data: sender } = await supabaseAdmin
-      .from("users")
-      .select("name, hash, color")
-      .eq("id", userId)
-      .maybeSingle();
+    // Fetch sender + room info
+    const [{ data: sender }, { data: room }] = await Promise.all([
+      supabaseAdmin.from("users").select("name,hash,color").eq("id", userId).maybeSingle(),
+      supabaseAdmin.from("rooms").select("name,is_dm").eq("id", roomId).maybeSingle(),
+    ]);
 
-    // Fetch room info
-    const { data: room } = await supabaseAdmin
-      .from("rooms")
-      .select("name, is_dm")
-      .eq("id", roomId)
-      .maybeSingle();
-
-    // Fire push notifications async — don't block the response
+    // Fire push async — don't block response
     sendPushToRoomMembers({
       roomId,
       excludeUserId: userId,
       payload: {
-        senderName: sender?.name || "someone",
-        senderHash: "#" + (sender?.hash || "?"),
+        senderName:  sender?.name || "someone",
+        senderHash:  "#" + (sender?.hash || "?"),
         senderColor: sender?.color || "#ffffff",
-        content: content.trim().slice(0, 120),
-        roomName: room?.name || "unknown",
-        isDM: room?.is_dm || false,
+        content:     trimmed.slice(0, 120),
+        roomName:    room?.name || "unknown",
+        isDM:        room?.is_dm || false,
         roomId,
       },
     }).catch(err => console.error("Push error:", err));
@@ -81,7 +87,7 @@ router.post("/", messageLimiter, requireAuth, async (req, res) => {
     res.json({ message });
   } catch (err) {
     console.error("Send message error:", err);
-    res.status(500).json({ error: "Failed to send message" });
+    res.status(500).json({ error: "failed to send message" });
   }
 });
 
