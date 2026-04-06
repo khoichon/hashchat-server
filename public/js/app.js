@@ -605,8 +605,8 @@
   autoResize(this);
   const count = this.value.length;
   const counter = document.getElementById('char-counter');
-  counter.textContent = count + ' / 1000';
-  counter.style.color = count > 900 ? 'var(--error)' : 'var(--text-muted)';
+  counter.textContent = count + ' / 200';
+  counter.style.color = count > 195 ? 'var(--error)' : 'var(--text-muted)';
 });
 
   function showMain() {
