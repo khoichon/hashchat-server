@@ -179,7 +179,6 @@
       .select('*, users(name, hash, color, is_official)')
       .eq('room_id', roomId)
       .order('timestamp', { ascending: true })
-      .limit(100);
 
     if (!msgs?.length) return;
     wrap.innerHTML = '';
