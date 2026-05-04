@@ -12,6 +12,14 @@ const Auth = (() => {
     return data;
   }
 
+  async function loginWithGoogle() {
+    const { error } = await db.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + '/app.html' },
+    });
+    if (error) throw error;
+  }
+
   async function signout() {
     await db.auth.signOut();
     window.location.href = '/index.html';
@@ -25,7 +33,8 @@ const Auth = (() => {
     // Check onboarded — skip check if already on onboarding page
     if (!window.location.pathname.includes('onboarding')) {
       const { data: profile } = await db.from('users').select('onboarded').eq('id', session.user.id).maybeSingle();
-      if (profile && !profile.onboarded) {
+      // New Google OAuth users won't have a profile row yet — send to onboarding
+      if (!profile || !profile.onboarded) {
         window.location.href = '/onboarding.html';
         return null;
       }
@@ -36,8 +45,16 @@ const Auth = (() => {
 
   async function redirectIfAuthed() {
     const { data: { session } } = await db.auth.getSession();
-    if (session) window.location.href = '/app.html';
+    if (session) {
+      // Check onboarding status before blindly sending to app
+      const { data: profile } = await db.from('users').select('onboarded').eq('id', session.user.id).maybeSingle();
+      if (!profile || !profile.onboarded) {
+        window.location.href = '/onboarding.html';
+      } else {
+        window.location.href = '/app.html';
+      }
+    }
   }
 
-  return { login, signup, signout, requireAuth, redirectIfAuthed };
+  return { login, signup, loginWithGoogle, signout, requireAuth, redirectIfAuthed };
 })();
