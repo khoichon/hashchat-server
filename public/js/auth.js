@@ -23,6 +23,7 @@ const Auth = (() => {
   // Convenience aliases
   const loginWithGoogle = () => loginWithOAuth('google');
   const loginWithZoom   = () => loginWithOAuth('zoom');
+  const loginWithGithub = () => loginWithOAuth('github');
 
   async function signout() {
     await db.auth.signOut();
@@ -60,5 +61,5 @@ const Auth = (() => {
     }
   }
 
-  return { login, signup, loginWithOAuth, loginWithGoogle, loginWithZoom, signout, requireAuth, redirectIfAuthed };
+  return { login, signup, loginWithOAuth, loginWithGoogle, loginWithZoom, loginWithGithub, signout, requireAuth, redirectIfAuthed };
 })();
