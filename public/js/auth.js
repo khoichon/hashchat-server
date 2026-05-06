@@ -12,13 +12,17 @@ const Auth = (() => {
     return data;
   }
 
-  async function loginWithGoogle() {
+  async function loginWithOAuth(provider) {
     const { error } = await db.auth.signInWithOAuth({
-      provider: 'google',
+      provider,
       options: { redirectTo: window.location.origin + '/app.html' },
     });
     if (error) throw error;
   }
+
+  // Convenience aliases
+  const loginWithGoogle = () => loginWithOAuth('google');
+  const loginWithZoom   = () => loginWithOAuth('zoom');
 
   async function signout() {
     await db.auth.signOut();
@@ -56,5 +60,5 @@ const Auth = (() => {
     }
   }
 
-  return { login, signup, loginWithGoogle, signout, requireAuth, redirectIfAuthed };
+  return { login, signup, loginWithOAuth, loginWithGoogle, loginWithZoom, signout, requireAuth, redirectIfAuthed };
 })();

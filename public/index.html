@@ -47,6 +47,12 @@
     .google-btn:hover { border-color: var(--border-hover); background: var(--glass-hover); }
     .google-btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .google-icon { width: 13px; height: 13px; flex-shrink: 0; }
+    .more-providers-toggle { width: 100%; margin-top: 0.55rem; background: none; border: none; font-family: 'Geist Mono', monospace; font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.2rem 0; transition: color 0.15s; }
+    .more-providers-toggle:hover { color: var(--text-dim); }
+    .more-providers-toggle .chevron { display: inline-block; transition: transform 0.2s ease; font-style: normal; }
+    .more-providers-toggle.open .chevron { transform: rotate(180deg); }
+    .more-providers-list { overflow: hidden; max-height: 0; transition: max-height 0.25s ease, opacity 0.2s ease; opacity: 0; display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0; }
+    .more-providers-list.open { max-height: 200px; opacity: 1; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
@@ -80,7 +86,7 @@
       <div class="status" id="status"></div>
       <button class="submit-btn" id="submit-btn" onclick="handleSubmit()">sign in</button>
       <div class="divider"><span class="divider-text">// or</span></div>
-      <button class="google-btn" id="google-btn" onclick="handleGoogle()">
+      <button class="google-btn" id="google-btn" onclick="handleOAuth('google', this)">
         <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -89,6 +95,18 @@
         </svg>
         continue with google
       </button>
+      <button class="more-providers-toggle" id="more-toggle" onclick="toggleMoreProviders()">
+        <span>// more options</span><i class="chevron">▾</i>
+      </button>
+      <div class="more-providers-list" id="more-providers-list">
+        <button class="google-btn" onclick="handleOAuth('zoom', this)">
+          <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 12c0 6.627-5.373 12-12 12S0 18.627 0 12 5.373 0 12 0s12 5.373 12 12z" fill="#2D8CFF"/>
+            <path d="M6 8.5A1.5 1.5 0 0 1 7.5 7h6A1.5 1.5 0 0 1 15 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 6 13.5v-5zm9.5 1.44 2.6-1.73A.5.5 0 0 1 19 8.5v7a.5.5 0 0 1-.9.29L15.5 14.1V9.94z" fill="#fff"/>
+          </svg>
+          continue with zoom
+        </button>
+      </div>
     </div>
     <div class="hint">// realtime · end-to-end · no logs</div>
   </div>
@@ -133,17 +151,22 @@
     }
     document.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
 
-    async function handleGoogle() {
-      const btn = document.getElementById('google-btn');
+    async function handleOAuth(provider, btn) {
       btn.disabled = true;
-      setStatus('// redirecting to google…', '');
+      setStatus('// redirecting to ' + provider + '…', '');
       try {
-        await Auth.loginWithGoogle();
-        // Page will redirect — no need to re-enable button
+        await Auth.loginWithOAuth(provider);
       } catch (err) {
-        setStatus('// ' + (err.message || 'google sign-in failed'), 'error');
+        setStatus('// ' + (err.message || provider + ' sign-in failed'), 'error');
         btn.disabled = false;
       }
+    }
+
+    function toggleMoreProviders() {
+      const toggle = document.getElementById('more-toggle');
+      const list   = document.getElementById('more-providers-list');
+      const open   = list.classList.toggle('open');
+      toggle.classList.toggle('open', open);
     }
 
     // Handle OAuth redirect back (Supabase puts token in URL hash)
